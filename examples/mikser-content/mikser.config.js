@@ -1,0 +1,54 @@
+// Shared mikser server for the three React example projects.
+//
+//  - documents/ holds the content tree (en + bg for the multilingual demo)
+//  - layouts/ holds a single page.html.hbs that includes island mount
+//    points — used only by the `islands` example; the `pure-spa` and
+//    `hybrid-ssg` examples consume the api, not the rendered HTML
+//  - The `api` plugin exposes a `public` endpoint with `subscribe` so
+//    `useDocument` / `useDocuments` / `live()` work in the React apps
+//  - cors is on by default (since 6.21.6) so the React dev servers on
+//    different ports can fetch + subscribe without extra config
+
+export default {
+    plugins: [
+        'documents',
+        'front-matter',
+        'yaml',
+        'layouts',
+        'plugin-schemas',
+        'render-hbs',
+        'render-markdown',
+        'api',
+    ],
+
+    layouts: {
+        // One generic page.html.hbs catches every document regardless of
+        // meta.layout. The React apps do their own per-layout dispatch
+        // via the meta.layout field; mikser's rendering is only
+        // consumed by scenario C (islands).
+        autoLayouts: true,
+    },
+
+    schemas: {
+        // 'warn' (the default) is deliberately kept here so the demo
+        // surfaces mistyped front-matter as a server log line without
+        // failing the build. Flip to 'fail' for CI strictness.
+        onError: 'warn',
+        // The generated declaration file is consumed by the React
+        // example projects — see e.g. hybrid-ssg/src/route-mapping.jsx
+        // for how it's imported.
+        typesFile: 'entities.d.ts',
+    },
+
+    api: {
+        endpoints: {
+            // Open endpoint — anything with meta.published: true is
+            // visible. Includes the `subscribe` operation so the
+            // useDocument / useDocuments hooks can stay live.
+            public: {
+                query: e => e.type === 'document' && e.meta?.published,
+                operations: ['list', 'subscribe'],
+            },
+        },
+    },
+}

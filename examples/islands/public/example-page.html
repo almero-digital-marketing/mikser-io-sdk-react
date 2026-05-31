@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>mikser page with islands</title>
+  </head>
+  <body>
+    <header>
+      <h1>A page rendered by mikser</h1>
+      <div data-island="search"></div>
+    </header>
+
+    <main>
+      <p>
+        This HTML is owned by mikser. The interactive bits below are React
+        islands mounted into specific nodes.
+      </p>
+
+      <section>
+        <h2>Product</h2>
+        <div data-island="cart" data-initial="1"></div>
+      </section>
+
+      <section>
+        <h2>Book a slot</h2>
+        <div data-island="booking"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
