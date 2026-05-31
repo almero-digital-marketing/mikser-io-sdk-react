@@ -296,3 +296,28 @@ export declare function useSimilar<T = unknown>(
     query: string,
     options?: UseSimilarOptions,
 ): UseSimilarResult<T>
+
+export type MikserStatus = 'connecting' | 'ready' | 'unreachable'
+
+export interface UseMikserStatusOptions {
+    /** Override the context client. Default: client from MikserProvider. */
+    client?: EntitiesClient
+    /** Deadline before falling back to 'unreachable'. Default: 5000 ms. */
+    timeoutMs?: number
+}
+
+/**
+ * Connection-status hook. Returns a MikserStatus that starts at
+ * 'connecting', moves to 'ready' on the first successful list() probe,
+ * and moves to 'unreachable' on probe failure or deadline timeout.
+ *
+ * One-shot: once the status leaves 'connecting' it does not flip back.
+ * For a live health signal, watch the `error` field of useDocuments instead.
+ *
+ * @example
+ *   const status = useMikserStatus()
+ *   if (status === 'unreachable') return <BackendDown />
+ *   if (status === 'connecting')  return <Loading />
+ *   return useRoutes(routes)
+ */
+export declare function useMikserStatus(options?: UseMikserStatusOptions): MikserStatus
