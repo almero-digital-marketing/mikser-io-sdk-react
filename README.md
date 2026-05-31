@@ -52,6 +52,8 @@ function Article({ id }) {
 | `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
 | `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
 | `<AssetIndexProvider>` + `useAsset()` | Resolve asset references to URL + dimensions + srcset. |
+| `<MikserVectorProvider client>` + `useMikserVectorClient()` | Bridges `mikser-io-sdk-vector` into React context. |
+| `useSimilar<T>(store, query, options?)` | Live semantic search with debounce + stale-result discard. |
 
 ## Router integration
 
@@ -189,6 +191,80 @@ function Hero() {
 ```
 
 `image()` returns `{ src, width, height, srcSet, alt }` — React JSX prop names, so it spreads onto `<img>` directly.
+
+## Semantic search — `MikserVectorProvider` + `useSimilar`
+
+Bridges `mikser-io-sdk-vector` into React. Separate provider from `MikserProvider` so projects that don't need search don't have to install `mikser-io-sdk-vector`. The hook handles debounce + stale-result discard so a fast-typing user doesn't see older results clobber newer ones.
+
+```jsx
+// main.jsx — install the vector provider alongside the documents one
+import { createClient as createVectorClient } from 'mikser-io-sdk-vector'
+import { MikserVectorProvider } from 'mikser-io-sdk-react'
+
+const similar = createVectorClient({ url: 'http://localhost:3001' })
+
+function App() {
+    return (
+        <MikserProvider client={docs}>
+            <MikserVectorProvider client={similar}>
+                <SearchBox />
+            </MikserVectorProvider>
+        </MikserProvider>
+    )
+}
+```
+
+```jsx
+// SearchBox.jsx
+import { useState } from 'react'
+import { useSimilar } from 'mikser-io-sdk-react'
+
+function SearchBox() {
+    const [query, setQuery] = useState('')
+    const { results, loading } = useSimilar('documents', query, {
+        limit:     10,
+        debounce:  200,    // ms after the last keystroke before firing
+        minLength: 2,      // skip the request below this length
+    })
+
+    return (
+        <div>
+            <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search…"
+            />
+            {loading && <p>Searching…</p>}
+            <ul>
+                {results.map((hit) => (
+                    <li key={hit.id}>
+                        <a href={hit.id}>{hit.data?.title}</a>
+                        <small>distance: {hit.distance.toFixed(3)}</small>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    )
+}
+```
+
+- **`loading`** flips true only while a request is in flight, not during the debounce wait. Right for spinner state, not placeholder state.
+- **`error`** is populated when `findSimilar()` rejects. Branch on it for a fallback UI.
+- **`refresh()`** forces a fresh request against the current query — useful after the vector store has been updated server-side.
+
+`mikser-io-sdk-vector` is an **optional** runtime dependency — this SDK doesn't import it. Install only if you use semantic search:
+
+```bash
+npm install mikser-io-sdk-vector
+```
+
+The hit shape is generic on the embedded payload:
+
+```ts
+type ProductHit = { title: string; sku: string; price: number }
+const { results } = useSimilar<ProductHit>('products', query)
+//        ↑ results[0].data is typed ProductHit
+```
 
 ## TypeScript
 
