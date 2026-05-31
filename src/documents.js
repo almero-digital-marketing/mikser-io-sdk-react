@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMikserClient } from './client.js'
 
 /**
- * Live single-document hook. Resolves the doc by id and stays in sync
+ * Live single-document hook. Resolves the document by id and stays in sync
  * with changes via client.live().
  *
  *   const { document, loading, error, refresh } = useDocument(entityId)

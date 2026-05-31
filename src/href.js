@@ -1,11 +1,16 @@
 // Multilingual href() — abstract logical references (/about) from
 // deployed URLs (/en/about, /fr/a-propos). See README for the full
-// pattern; this module is the React implementation of the same shape
-// shipped in mikser-io-sdk-vue's href.js.
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+// pattern.
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMikserClient } from './client.js'
 
 export const HrefIndexContext = createContext(null)
+
+// Stable signature for an arbitrary filter, used as a useEffect dep so
+// subscriptions only rewire when the filter's *shape* changes.
+function filterKey(filter) {
+    return JSON.stringify(filter ?? null)
+}
 
 /**
  * HrefIndexProvider — builds a reactive href→{lang: url} index from
@@ -17,7 +22,7 @@ export const HrefIndexContext = createContext(null)
  *
  * Front-matter convention:
  *   meta.href:  '/about'           (logical reference)
- *   meta.lang:  'en'               (which language this doc represents)
+ *   meta.lang:  'en'               (which language this document represents)
  *   meta.route: '/en/about'        (actual URL — what useHref returns)
  */
 export function HrefIndexProvider({
@@ -30,20 +35,22 @@ export function HrefIndexProvider({
     const [index, setIndex] = useState({})
 
     const effectiveFilter = filter ?? { 'meta.href': { $exists: true } }
-    const filterKey = useMemo(() => JSON.stringify(effectiveFilter), [effectiveFilter])
+    const filterRef = useRef(effectiveFilter)
+    filterRef.current = effectiveFilter
+    const key = useMemo(() => filterKey(effectiveFilter), [effectiveFilter])
 
     useEffect(() => {
         let cancelled = false
         const dispose = client.live(
-            JSON.parse(filterKey),
-            (docs) => {
+            filterRef.current,
+            (documents) => {
                 if (cancelled) return
                 const next = {}
-                for (const doc of docs) {
-                    const ref = doc.meta?.href
+                for (const document of documents) {
+                    const ref = document.meta?.href
                     if (!ref) continue
-                    const lang = doc.meta?.lang ?? defaultLang
-                    const url  = doc.meta?.route ?? doc.meta?.destination ?? ref
+                    const lang = document.meta?.lang ?? defaultLang
+                    const url  = document.meta?.route ?? document.meta?.destination ?? ref
                     if (!next[ref]) next[ref] = {}
                     next[ref][lang] = url
                 }
@@ -55,7 +62,7 @@ export function HrefIndexProvider({
             cancelled = true
             dispose?.()
         }
-    }, [client, filterKey, defaultLang])
+    }, [client, key, defaultLang])
 
     const value = useMemo(() => ({ index, defaultLang }), [index, defaultLang])
     return createElement(HrefIndexContext.Provider, { value }, children)

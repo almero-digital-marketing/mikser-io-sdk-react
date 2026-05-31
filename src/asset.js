@@ -2,10 +2,16 @@
 // href, scoped to asset entities. Useful when assets carry metadata
 // the UI needs (dimensions, srcset, alt) and you want to look them up
 // by reference rather than re-fetching per render.
-import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMikserClient } from './client.js'
 
 export const AssetIndexContext = createContext(null)
+
+// Stable signature for the filter, used as a useEffect dep so the SSE
+// subscription only rewires when the filter's *shape* changes.
+function filterKey(filter) {
+    return JSON.stringify(filter ?? null)
+}
 
 /**
  * AssetIndexProvider — wraps your tree to expose a reactive asset
@@ -25,12 +31,14 @@ export function AssetIndexProvider({
     const [index, setIndex] = useState({})
 
     const effectiveFilter = filter ?? { type: 'asset' }
-    const filterKey = useMemo(() => JSON.stringify(effectiveFilter), [effectiveFilter])
+    const filterRef = useRef(effectiveFilter)
+    filterRef.current = effectiveFilter
+    const key = useMemo(() => filterKey(effectiveFilter), [effectiveFilter])
 
     useEffect(() => {
         let cancelled = false
         const dispose = client.live(
-            JSON.parse(filterKey),
+            filterRef.current,
             (assets) => {
                 if (cancelled) return
                 const next = {}
@@ -52,7 +60,7 @@ export function AssetIndexProvider({
             cancelled = true
             dispose?.()
         }
-    }, [client, filterKey])
+    }, [client, key])
 
     return createElement(AssetIndexContext.Provider, { value: index }, children)
 }

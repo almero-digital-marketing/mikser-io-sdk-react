@@ -85,10 +85,10 @@ export declare function useDocuments<T = unknown>(
 
 export interface UseMikserRoutesOptions {
     client?: EntitiesClient
-    /** Filter for which docs become routes. Default `meta.published: true` + `meta.route` exists. */
+    /** Filter for which documents become routes. Default `meta.published: true` + `meta.route` exists. */
     filter?: Filter
     /** Maps a document into a React Router RouteObject. Receives `{ id, meta }`. */
-    mapRoute: (doc: any) => RouteObjectLike | null | undefined
+    mapRoute: (document: any) => RouteObjectLike | null | undefined
     /** Hand-coded routes (login, dashboard) mounted before content. */
     staticRoutes?: RouteObjectLike[]
     /** Element for the catch-all '*' route. Omit to skip. */
@@ -106,7 +106,7 @@ export declare function useMikserRoutes(
 export interface GenerateMikserRoutesOptions<R = RouteObjectLike> {
     client: EntitiesClient
     filter?: Filter
-    mapRoute: (doc: any) => R
+    mapRoute: (document: any) => R
 }
 
 /**
@@ -183,7 +183,7 @@ export interface UseAlternatesOptions {
 export interface UseAlternatesResult {
     /** Alternates excluding the current page's own language. */
     alternates: Alternate[]
-    /** The matched current route, or null if no doc corresponds. */
+    /** The matched current route, or null if no document corresponds. */
     current:    CurrentRoute | null
 }
 

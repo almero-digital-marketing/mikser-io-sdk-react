@@ -16,11 +16,11 @@ Peer deps: `react` ^18 or ^19. `react-router-dom` is optional — needed only if
 import { createClient } from 'mikser-io-sdk-api'
 import { MikserProvider, useDocument } from 'mikser-io-sdk-react'
 
-const docs = createClient({ url: 'http://localhost:3001' }).entities('public')
+const documents = createClient({ url: 'http://localhost:3001' }).entities('public')
 
 function App() {
     return (
-        <MikserProvider client={docs}>
+        <MikserProvider client={documents}>
             <Article id="/content/blog/launch" />
         </MikserProvider>
     )
@@ -49,7 +49,7 @@ function Article({ id }) {
 | `useDocuments<T>(query, options?)` | Live list hook. Re-subscribes when the query shape changes. |
 | `useMikserRoutes({ mapRoute, ... })` | Live array of React Router route objects. Pass to `useRoutes()` or `createBrowserRouter()`. |
 | `generateMikserRoutes({ mapRoute, ... })` | Build-time one-shot enumerator. Right for Vite SSG / Next static export. |
-| `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — same pattern as `mikser-io-sdk-vue`. |
+| `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
 | `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
 | `<AssetIndexProvider>` + `useAsset()` | Resolve asset references to URL + dimensions + srcset. |
 
@@ -67,9 +67,9 @@ import NotFound from './NotFound'
 
 function Routes() {
     const routes = useMikserRoutes({
-        mapRoute: doc => ({
-            path: doc.meta.route,
-            element: <DocumentPage entityId={doc.id} />,
+        mapRoute: document => ({
+            path: document.meta.route,
+            element: <DocumentPage entityId={document.id} />,
         }),
         notFoundElement: <NotFound />,
     })
@@ -78,7 +78,7 @@ function Routes() {
 
 export default function App() {
     return (
-        <MikserProvider client={docs}>
+        <MikserProvider client={documents}>
             <BrowserRouter>
                 <Routes />
             </BrowserRouter>
@@ -95,7 +95,7 @@ import { useMemo } from 'react'
 import { useMikserRoutes } from 'mikser-io-sdk-react'
 
 function Routes() {
-    const routes = useMikserRoutes({ mapRoute: doc => ({ /* ... */ }) })
+    const routes = useMikserRoutes({ mapRoute: document => ({ /* ... */ }) })
     const router = useMemo(() => createBrowserRouter(routes), [routes])
     return <RouterProvider router={router} />
 }
@@ -105,7 +105,19 @@ Note: the data-router variant tears down router state on every catalog change. P
 
 ## Multilingual `useHref` / `useAlternates`
 
-Same pattern as `mikser-io-sdk-vue`'s [`useHref()`](https://github.com/almero-digital-marketing/mikser-io-sdk-vue#multilingual-href--providehrefindex--usehref) — front-matter convention identical (`meta.href`, `meta.lang`, `meta.route`), resolution identical, fallback chain identical.
+### The pattern, and why it matters
+
+In a multilingual site the *same* logical page exists at different URLs per language: `/about` is served at `/en/about` and `/fr/a-propos`. Hard-coding those URLs into links couples every component to the routing scheme and breaks the moment a translation's slug changes.
+
+`useHref` decouples the two. You link to a **logical reference** (`/about`) and the SDK resolves it to the **deployed URL** for the current (or requested) language. The mapping comes from three front-matter fields on each document:
+
+| Front-matter field | Meaning | Example |
+|---|---|---|
+| `meta.href` | The logical reference — identical across all translations of a page | `/about` |
+| `meta.lang` | Which language this particular document represents | `en` |
+| `meta.route` | The actual deployed URL — what `useHref` returns | `/en/about` |
+
+`<HrefIndexProvider>` builds a live `href → { lang → url }` index from the catalog (kept current via SSE). `useHref(lang)` reads it. Resolution falls back gracefully: requested language → `default` bucket → any available language → the input reference unchanged (so a broken reference stays visible rather than silently becoming `undefined`).
 
 ```jsx
 import { HrefIndexProvider, useHref, useAlternates } from 'mikser-io-sdk-react'
@@ -113,7 +125,7 @@ import { useLocation, Link } from 'react-router-dom'
 
 function App() {
     return (
-        <MikserProvider client={docs}>
+        <MikserProvider client={documents}>
             <HrefIndexProvider defaultLang="en">
                 <Nav />
             </HrefIndexProvider>
@@ -146,7 +158,12 @@ function Hreflang() {
 }
 ```
 
-The `languages` option is the same toggle as in the Vue SDK: omitted means "only languages that actually exist" (right for SEO tags); provided means "every language in the list, falling back via href()" (right for switchers).
+The `languages` option toggles two behaviours:
+
+- **Omitted** — `alternates` contains only languages that *actually exist* for the current page. Right for SEO `hreflang` tags: don't advertise translations you don't have.
+- **Provided** (an array) — `alternates` contains one entry per requested language, falling back through `href()`'s resolution chain when a real translation is missing. Right for a language switcher: show every locale the app supports, even if a given page isn't translated yet.
+
+In both cases the current page's own language is excluded from `alternates` (it's what `current` is for).
 
 ## Asset resolution
 
@@ -155,7 +172,7 @@ import { AssetIndexProvider, useAsset } from 'mikser-io-sdk-react'
 
 function App() {
     return (
-        <MikserProvider client={docs}>
+        <MikserProvider client={documents}>
             <AssetIndexProvider>
                 <Hero />
             </AssetIndexProvider>
@@ -178,7 +195,7 @@ function Hero() {
 The hooks are generic on the entity type:
 
 ```ts
-import type { MetaByLayout } from '../mikser-content/entities'   // emitted by mikser-io-schemas
+import type { MetaByLayout } from '../mikser-content/entities'   // emitted by mikser-io-plugin-schemas
 
 type Article = { id: string; meta: MetaByLayout<'article'> }
 
@@ -186,17 +203,29 @@ const { document } = useDocument<Article>(id)
 // document.meta.title  ← typed
 ```
 
-`mikser-io-sdk-api` provides the `EntitiesClient`, `Filter`, and `ListQuery` types out of the box. Pair with [`mikser-io-schemas`](https://github.com/almero-digital-marketing/mikser-io-schemas) for entity meta types generated from Zod schemas.
+`mikser-io-sdk-api` provides the `EntitiesClient`, `Filter`, and `ListQuery` types out of the box. Pair with [`mikser-io-plugin-schemas`](https://github.com/almero-digital-marketing/mikser-io-plugin-schemas) for entity meta types generated from Zod schemas.
 
-## Differences from `mikser-io-sdk-vue`
+## Design notes
 
-The shape is intentionally parallel, with three React-idiomatic deltas:
+A few React-specific choices worth knowing:
 
-1. **`<MikserProvider>` replaces `app.use(createMikserPlugin(...))`** — React Context instead of Vue's provide/inject. Same role, idiomatic shape.
-2. **`useMikserRoutes` replaces `createMikserRouter`** — React Router v6+ takes a routes array and `useRoutes(routes)` does the matching. No need for an imperative router instance with `addRoute` / `removeRoute`; the array IS the router input. Cleaner integration; no teardown on catalog changes.
-3. **`useDocument(id)` takes a raw `id`, not a Ref / getter** — React re-runs hooks on render, so passing the current id value works the same way a Vue `Ref` would. Pass `useDocument(props.id)` directly.
+- **`useDocument(id)` takes a raw value, not a getter.** React re-runs hooks on every render, so the current `id` value is always fresh — pass `useDocument(props.id)` directly. The subscription re-establishes via a `useEffect` dependency on `id`.
+- **`useDocuments(query)` keys re-subscription on the query *shape*, not identity.** The hook computes a stable signature from `filter` / `sort` / `fields` / `limit` / `skip`, so passing a freshly-constructed object literal each render doesn't churn the SSE subscription. You don't need to `useMemo` the query.
+- **`useMikserRoutes` returns an array, not a router.** React Router v6+ consumes a routes array (`useRoutes(routes)`), so the SDK hands you exactly that and lets you decide how to mount it. With `useRoutes` there's no router teardown when the catalog changes — routes are added and removed in place.
+- **`useAsset().image()` returns `srcSet` (camelCase).** That's React's JSX prop name, so the result spreads straight onto `<img>`.
 
-Everything else — `useDocument`, `useDocuments`, `useHref`, `useAlternates`, `useAsset` — has the same return shape and the same options as the Vue SDK.
+## Examples
+
+Full runnable examples live in [`examples/`](./examples):
+
+| Example | Shows |
+|---|---|
+| [`mikser-content/`](./examples/mikser-content) | The shared mikser server that feeds the apps. Run it first. |
+| [`pure-spa/`](./examples/pure-spa) | Runtime-everything SPA — `useMikserRoutes`, `useDocuments`, live updates. |
+| [`hybrid-ssg/`](./examples/hybrid-ssg) | Static public build (`generateMikserRoutes`) + a live editor SPA from one catalog. |
+| [`islands/`](./examples/islands) | mikser owns the HTML; React mounts into specific DOM nodes. |
+
+See [`examples/README.md`](./examples/README.md) for the run order.
 
 ## License
 

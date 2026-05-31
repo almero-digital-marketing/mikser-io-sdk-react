@@ -1,11 +1,9 @@
 // Router integration for React Router v6+.
 //
-// The Vue SDK's createMikserRouter returns a router instance whose
-// routes are kept in sync via addRoute/removeRoute. React Router's
-// equivalent shape is different — `useRoutes(routes)` takes an array
-// and renders the matched route. So the hook here returns the array
-// directly; the consumer passes it to `useRoutes()` or to
-// `createBrowserRouter()` at the top of their tree.
+// `useMikserRoutes` returns a live array of route objects. The consumer
+// passes it to `useRoutes(routes)` (recommended — no router teardown on
+// catalog changes) or to a memoized `createBrowserRouter(routes)` when
+// they need data-router features (loaders, actions, etc.).
 //
 // Either pattern works:
 //
@@ -19,23 +17,26 @@
 //       const router = useMemo(() => createBrowserRouter(routes), [routes])
 //       return <RouterProvider router={router} />
 //   }
-//
-// The first is preferred because it doesn't tear down router state on
-// every catalog change. The second is right if you need data-router
-// features (loaders, actions, etc.) on the dynamic routes.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMikserClient } from './client.js'
 
 const DEFAULT_FILTER = { 'meta.published': true, 'meta.route': { $exists: true } }
+
+// Stable string signature for a filter, so the effect that owns the SSE
+// subscription only re-runs when the filter's *shape* changes — not on
+// every render where the consumer recreates the object literal.
+function filterKey(filter) {
+    return JSON.stringify(filter ?? null)
+}
 
 /**
  * Live list of React Router route objects from the catalog.
  *
  *   const routes = useMikserRoutes({
  *       filter: { 'meta.published': true, 'meta.route': { $exists: true } },
- *       mapRoute: doc => ({
- *           path: doc.meta.route,
- *           element: <DocumentPage entityId={doc.id} />,
+ *       mapRoute: document => ({
+ *           path: document.meta.route,
+ *           element: <DocumentPage entityId={document.id} />,
  *       }),
  *       staticRoutes: [{ path: '/login', element: <Login /> }],
  *       notFoundElement: <NotFound />,
@@ -56,16 +57,24 @@ export function useMikserRoutes({
 
     const [contentRoutes, setContentRoutes] = useState([])
 
-    // Stable key for the filter so we don't re-subscribe on every render
-    const filterKey = useMemo(() => JSON.stringify(filter), [filter])
+    // Capture latest values without making them effect deps. The effect
+    // re-runs only when the filter *shape* (filterKey) or client identity
+    // change; inside the callback we always read the latest mapRoute and
+    // filter from refs.
+    const filterRef = useRef(filter)
+    filterRef.current = filter
+    const mapRouteRef = useRef(mapRoute)
+    mapRouteRef.current = mapRoute
+
+    const key = useMemo(() => filterKey(filter), [filter])
 
     useEffect(() => {
         let cancelled = false
         const dispose = client.live(
-            JSON.parse(filterKey),
-            (docs) => {
+            filterRef.current,
+            (documents) => {
                 if (cancelled) return
-                setContentRoutes(docs.map(mapRoute).filter(Boolean))
+                setContentRoutes(documents.map(mapRouteRef.current).filter(Boolean))
             },
             { fields: ['id', 'meta'] },
         )
@@ -73,7 +82,7 @@ export function useMikserRoutes({
             cancelled = true
             dispose?.()
         }
-    }, [client, filterKey, mapRoute])
+    }, [client, key])
 
     return useMemo(() => {
         const tail = notFoundElement
@@ -90,8 +99,8 @@ export function useMikserRoutes({
  *
  *   // build/routes.mjs
  *   const routes = await generateMikserRoutes({
- *       client: docs,
- *       mapRoute: doc => ({ path: doc.meta.route, id: doc.id }),
+ *       client: documents,
+ *       mapRoute: document => ({ path: document.meta.route, id: document.id }),
  *   })
  *
  * mapRoute can return any shape — this helper just enumerates the
