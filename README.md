@@ -1,6 +1,25 @@
 # mikser-io-sdk-react
 
-React 18+ / 19+ hooks and router integration for a [mikser-io](https://github.com/almero-digital-marketing/mikser-io) server. Pairs with [`mikser-io-sdk-api`](https://github.com/almero-digital-marketing/mikser-io-sdk-api) — that package handles the transport (HTTP + SSE); this one wraps it in React idioms.
+**Wire a React app to a [mikser-io](https://github.com/almero-digital-marketing/mikser-io) content backend in ~10 lines.** Content stays as `.md` and `.yml` files on disk — diffable, grep-able, copy-anywhere. The hooks below give you live updates over SSE, typed access to layout-shaped front-matter, multilingual URL resolution, asset metadata, and semantic search.
+
+| What you get | Reads as |
+|---|---|
+| **Live content** | `const { document } = useDocument(id)` — re-renders as the file changes |
+| **Live lists** | `const { documents } = useDocuments({ filter, sort, fields })` |
+| **Multilingual URLs** | `href('/about')` → `/en/about` or `/fr/a-propos` per locale |
+| **Hreflang + switchers** | `useAlternates({ route })` |
+| **Asset metadata** | `image('/assets/hero.jpg')` → `{ src, srcSet, width, height, alt }` |
+| **Semantic search** | `useSimilar(store, query)` with built-in debounce + stale-discard |
+| **Live routes** | `useMikserRoutes({ mapRoute })` → array — pass to `useRoutes()` or `createBrowserRouter()` |
+| **Build-time routes** | `generateMikserRoutes()` for Vite SSG / Next static export |
+
+**Augment, don't own.** Your app stays yours. Routes are data — mikser produces them, you decide how they're mounted. Compose with your auth-gated routes, admin layouts, dashboard, anything else you already wire by hand.
+
+**One mental model across every rendering shape** — runtime-everything SPA, hybrid (prerendered public + live admin), or mikser-rendered HTML with React islands mounted into specific DOM nodes. Same hooks, different mount. See [`examples/`](./examples) for the three patterns side-by-side.
+
+**Typed at the seam.** Pair with [`mikser-io-plugin-schemas`](https://github.com/almero-digital-marketing/mikser-io-plugin-schemas) to author Zod schemas alongside your content; `useDocument<{ meta: MetaByLayout<'article'> }>(id)` then carries the front-matter shape straight into your JSX.
+
+Pairs with [`mikser-io-sdk-api`](https://github.com/almero-digital-marketing/mikser-io-sdk-api) — that package handles transport (HTTP + SSE); this one wraps it in React idioms.
 
 ## Install
 
