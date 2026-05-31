@@ -93,9 +93,9 @@ export function useMikserRoutes({
 }
 
 /**
- * Build-time route generation. One-shot list() against the catalog;
- * returns plain route definitions for use in Vite SSG / Next static
- * export / any prerender tooling.
+ * Build-time route generation. Enumerates every matching catalog entity
+ * and applies the mapRoute callback; returns plain route definitions
+ * for use in Vite SSG / Next static export / any prerender tooling.
  *
  *   // build/routes.mjs
  *   const routes = await generateMikserRoutes({
@@ -104,10 +104,12 @@ export function useMikserRoutes({
  *   })
  *
  * mapRoute can return any shape — this helper just enumerates the
- * catalog and applies your mapper. Returns whatever the mapper
- * returns; React Router specifics (element, lazy, etc.) are the
- * caller's problem because element construction is environment-
- * specific (server vs client).
+ * catalog and applies your mapper. Returns whatever the mapper returns;
+ * React Router specifics (element, lazy, etc.) are the caller's problem
+ * because element construction is environment-specific (server vs client).
+ *
+ * Auto-paginates via sdk-api's listAll() — no manual limit, no silent
+ * truncation on large catalogs.
  */
 export async function generateMikserRoutes({
     client,
@@ -117,10 +119,6 @@ export async function generateMikserRoutes({
     if (!client)   throw new Error('generateMikserRoutes: { client } is required')
     if (!mapRoute) throw new Error('generateMikserRoutes: { mapRoute } is required')
 
-    const { items } = await client.list({
-        filter,
-        fields: ['id', 'meta'],
-        limit:  10_000,
-    })
+    const items = await client.listAll({ filter, fields: ['id', 'meta'] })
     return items.map(mapRoute)
 }
