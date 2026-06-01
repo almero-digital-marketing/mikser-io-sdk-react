@@ -8,9 +8,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const MIKSER_URL = process.env.MIKSER_URL || 'http://localhost:3001'
 
-// Build-time uses the sitemap endpoint — narrow query (meta.component
-// only). baseUrl (not url) is the required createClient option.
-const client = createClient({ baseUrl: MIKSER_URL }).entities('sitemap')
+// Same single client as the runtime editor. initialUrl points at
+// the static snapshot the data plugin writes (out/data/sitemap.json)
+// — generateMikserRoutes consults it before falling back to a fresh
+// list() call.
+const client = createClient({ baseUrl: MIKSER_URL })
+  .entities('public', { initialUrl: '/data/sitemap.json' })
 
 function routeFor(d) {
   if (d.meta?.route) return d.meta.route

@@ -15,13 +15,13 @@ const staticRoutes = [
   { path: '/products', element: <ProductIndex /> },
 ]
 
-export default function App({ sitemap }) {
+export default function App() {
   // Live route array, rebuilt whenever the mikser catalog changes.
-  // Uses the sitemap client (passed from main.jsx) — narrow payload,
-  // server-side cache: true so a reverse proxy can fall back to disk
-  // when mikser is down, transparent to the SDK.
+  // Reads the default client from MikserProvider — that client is
+  // configured with initialUrl: '/data/sitemap.json' in main.jsx, so
+  // the first paint loads from the static snapshot (CDN-cacheable, no
+  // API roundtrip), then SSE deltas keep it current.
   const routes = useMikserRoutes({
-    client: sitemap,
     mapRoute,
     staticRoutes,
     notFoundElement: <NotFound />,

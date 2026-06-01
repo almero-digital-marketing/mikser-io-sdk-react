@@ -7,11 +7,12 @@ import { mapRoute } from './route-mapping.jsx'
  * useMikserRoutes, so adding or editing content shows up instantly while
  * editing — the same views the static build uses, but resolved at runtime.
  */
-export default function AppEditor({ sitemap }) {
-  // useMikserRoutes against the sitemap client (passed in from main.editor.jsx).
-  // The sitemap endpoint has server-side cache: true so a reverse
-  // proxy fails over to disk when mikser is down — transparent failover.
-  const routes = useMikserRoutes({ client: sitemap, mapRoute })
+export default function AppEditor() {
+  // useMikserRoutes reads the default client from MikserProvider —
+  // configured in main.editor.jsx with initialUrl pointing at the
+  // static sitemap snapshot. First paint loads from that file; SSE
+  // keeps the route table current.
+  const routes = useMikserRoutes({ mapRoute })
   const element = useRoutes(routes)
 
   return (

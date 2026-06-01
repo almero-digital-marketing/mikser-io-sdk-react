@@ -59,20 +59,18 @@ function Article({ id }) {
 }
 ```
 
-### Adding routes — two endpoints, one root
+### Adding routes — one endpoint, one snapshot
 
-Once the app needs a router, you want **two** clients off the same root:
-
-- **`documents`** → the `public` endpoint, full content. Powers `useDocument` inside view components.
-- **`sitemap`** → a fields-projected endpoint that returns only what the router needs (id, route, component, title). Powers `useMikserRoutes`. Because mikser's api plugin supports `cache: true` on endpoints, the response is also written to disk so a reverse proxy can fall back to the cached file when mikser is unreachable.
+Configure **one** entities client. Pass `initialUrl` pointing at the static `out/data/sitemap.json` snapshot the [`data` plugin's `catalog`](https://github.com/almero-digital-marketing/mikser-io) entry writes — the SDK loads that on first paint (CDN-cacheable, no API roundtrip), then opens a live SSE subscribe on the same `/public` endpoint for incremental updates.
 
 ```jsx
-const root = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
-const documents = root.entities('public')
-const sitemap   = root.entities('sitemap')
+const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
+    .entities('public', { initialUrl: '/data/sitemap.json' })
 ```
 
-Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [`examples/pure-spa`](./examples/pure-spa) for the full pattern.
+That's it — no second API endpoint to configure, no second cache file.
+
+Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [`examples/pure-spa`](./examples/pure-spa) for the full pattern, and [`examples/mikser-content/mikser.config.js`](./examples/mikser-content/mikser.config.js) for the data plugin's `catalog.sitemap` block.
 
 ## Surface
 
@@ -102,13 +100,11 @@ import { useMikserRoutes } from 'mikser-io-sdk-react'
 import DocumentPage from './DocumentPage'
 import NotFound from './NotFound'
 
-function Routes({ sitemap }) {
-    // Pass the sitemap client explicitly — narrow projection, cached
-    // for proxy fail-over. The default client (from MikserProvider) is
-    // documents/public, which would pull markdown bodies into the
-    // router for no reason.
+function Routes() {
+    // Reads the default client from MikserProvider — the one
+    // configured with initialUrl above. First paint loads from the
+    // static snapshot; SSE deltas keep it current.
     const routes = useMikserRoutes({
-        client: sitemap,
         mapRoute: document => ({
             path: document.meta.route,
             element: <DocumentPage entityId={document.id} />,
@@ -122,7 +118,7 @@ export default function App() {
     return (
         <MikserProvider client={documents}>
             <BrowserRouter>
-                <Routes sitemap={sitemap} />
+                <Routes />
             </BrowserRouter>
         </MikserProvider>
     )
@@ -136,11 +132,8 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { useMemo } from 'react'
 import { useMikserRoutes } from 'mikser-io-sdk-react'
 
-function Routes({ sitemap }) {
-    const routes = useMikserRoutes({
-        client: sitemap,
-        mapRoute: document => ({ /* ... */ }),
-    })
+function Routes() {
+    const routes = useMikserRoutes({ mapRoute: document => ({ /* ... */ }) })
     const router = useMemo(() => createBrowserRouter(routes), [routes])
     return <RouterProvider router={router} />
 }

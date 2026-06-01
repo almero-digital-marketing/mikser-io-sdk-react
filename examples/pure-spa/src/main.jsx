@@ -7,21 +7,20 @@ import App from './App.jsx'
 
 const MIKSER_URL = import.meta.env.VITE_MIKSER_URL || 'http://localhost:3001'
 
-// Two clients, one root:
-//   - documents → full content fetch via useDocument inside views
-//   - sitemap   → narrow router data via useMikserRoutes in App.
-//                 Server-side `cache: true` writes responses to disk;
-//                 a reverse proxy can fail over to the cache when
-//                 mikser is down — transparent to the SDK.
-const root = createClient({ baseUrl: MIKSER_URL })
-const documents = root.entities('public')
-const sitemap = root.entities('sitemap')
+// One client, one endpoint. initialUrl points at the static snapshot
+// the data plugin writes (out/data/sitemap.json) — that's the fast
+// first-paint path for routes. After the snapshot lands the SDK opens
+// a live SSE subscribe on the same /public endpoint for incremental
+// updates. No second API endpoint, no second cache file — just one
+// CDN-cacheable static file plus the existing live channel.
+const documents = createClient({ baseUrl: MIKSER_URL })
+  .entities('public', { initialUrl: '/data/sitemap.json' })
 
 createRoot(document.getElementById('app')).render(
   <React.StrictMode>
     <MikserProvider client={documents}>
       <BrowserRouter>
-        <App sitemap={sitemap} />
+        <App />
       </BrowserRouter>
     </MikserProvider>
   </React.StrictMode>,
