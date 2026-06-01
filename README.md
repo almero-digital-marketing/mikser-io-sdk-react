@@ -35,7 +35,8 @@ Peer deps: `react` ^18 or ^19. `react-router-dom` is optional — needed only if
 import { createClient } from 'mikser-io-sdk-api'
 import { MikserProvider, useDocument } from 'mikser-io-sdk-react'
 
-const documents = createClient({ url: 'http://localhost:3001' }).entities('public')
+const documents = createClient({ baseUrl: 'http://localhost:3001' })
+    .entities('public')
 
 function App() {
     return (
@@ -57,6 +58,21 @@ function Article({ id }) {
     )
 }
 ```
+
+### Adding routes — two endpoints, one root
+
+Once the app needs a router, you want **two** clients off the same root:
+
+- **`documents`** → the `public` endpoint, full content. Powers `useDocument` inside view components.
+- **`sitemap`** → a fields-projected endpoint that returns only what the router needs (id, route, component, title). Powers `useMikserRoutes`. Because mikser's api plugin supports `cache: true` on endpoints, the response is also written to disk so a reverse proxy can fall back to the cached file when mikser is unreachable.
+
+```jsx
+const root = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
+const documents = root.entities('public')
+const sitemap   = root.entities('sitemap')
+```
+
+Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [`examples/pure-spa`](./examples/pure-spa) for the full pattern.
 
 ## Surface
 
@@ -86,8 +102,13 @@ import { useMikserRoutes } from 'mikser-io-sdk-react'
 import DocumentPage from './DocumentPage'
 import NotFound from './NotFound'
 
-function Routes() {
+function Routes({ sitemap }) {
+    // Pass the sitemap client explicitly — narrow projection, cached
+    // for proxy fail-over. The default client (from MikserProvider) is
+    // documents/public, which would pull markdown bodies into the
+    // router for no reason.
     const routes = useMikserRoutes({
+        client: sitemap,
         mapRoute: document => ({
             path: document.meta.route,
             element: <DocumentPage entityId={document.id} />,
@@ -101,7 +122,7 @@ export default function App() {
     return (
         <MikserProvider client={documents}>
             <BrowserRouter>
-                <Routes />
+                <Routes sitemap={sitemap} />
             </BrowserRouter>
         </MikserProvider>
     )
@@ -115,8 +136,11 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { useMemo } from 'react'
 import { useMikserRoutes } from 'mikser-io-sdk-react'
 
-function Routes() {
-    const routes = useMikserRoutes({ mapRoute: document => ({ /* ... */ }) })
+function Routes({ sitemap }) {
+    const routes = useMikserRoutes({
+        client: sitemap,
+        mapRoute: document => ({ /* ... */ }),
+    })
     const router = useMemo(() => createBrowserRouter(routes), [routes])
     return <RouterProvider router={router} />
 }
