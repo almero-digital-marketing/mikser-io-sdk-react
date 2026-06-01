@@ -68,9 +68,40 @@ const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
     .entities('public', { initialUrl: '/data/sitemap.json' })
 ```
 
-That's it — no second API endpoint to configure, no second cache file.
+That's it on the client. The server side is one `data.catalog` block:
 
-Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [`examples/pure-spa`](./examples/pure-spa) for the full pattern, and [`examples/mikser-content/mikser.config.js`](./examples/mikser-content/mikser.config.js) for the data plugin's `catalog.sitemap` block.
+```js
+// mikser-content/mikser.config.js  (server side)
+{
+    plugins: ['documents', 'front-matter', 'plugin-schemas', 'data', 'api'],
+    data: {
+        catalog: {
+            // out/data/sitemap.json — every published, component-having
+            // document, projected to just the routing fields.
+            sitemap: {
+                query: e =>
+                    e.type === 'document' &&
+                    e.meta?.published &&
+                    e.meta?.component,
+                pick: ['id', 'destination', 'meta'],
+            },
+        },
+    },
+    api: {
+        endpoints: {
+            public: {
+                query: e => e.type === 'document' && e.meta?.published,
+                operations: ['list', 'subscribe'],
+                cache: true,
+            },
+        },
+    },
+}
+```
+
+The `data` plugin runs at finalize, writes one file per catalog entry under `out/data/`, served as a static asset by mikser's built-in handler. The `pick` projection is enforced server-side so the snapshot stays small. `query` lines up 1:1 with the `live()` filter the SDK opens after first paint — initial state matches what SSE will send.
+
+Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [mikser-io-sdk-api → `initialUrl`](https://github.com/almero-digital-marketing/mikser-io-sdk-api#initialurl--pair-with-the-data-plugin-for-fast-first-paint) for the client side, [`examples/pure-spa`](./examples/pure-spa) for the full pattern, and [`examples/mikser-content/mikser.config.js`](./examples/mikser-content/mikser.config.js) for the full config in context.
 
 ## Surface
 
