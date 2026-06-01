@@ -5,6 +5,7 @@ export default function ProductIndex() {
   const { documents: products } = useDocuments({
     filter: { 'meta.component': 'product' },
     sort: { 'meta.title': 1 },
+    fields: ['id', 'route', 'meta.title', 'meta.price', 'meta.image'],
   })
 
   return (
