@@ -1,6 +1,6 @@
 {
     "name": "mikser-io-sdk-react",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "React hooks and router integration for mikser-io",
     "type": "module",
     "main": "index.js",
