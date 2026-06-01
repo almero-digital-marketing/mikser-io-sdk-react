@@ -112,11 +112,11 @@ import { MikserProvider, useMikserRoutes } from 'mikser-io-sdk-react'
 import DocumentPage from './DocumentPage'
 import NotFound from './NotFound'
 
-// One client. initialUrl pulls the static snapshot the data plugin
+// One client. data.catalog pulls the static snapshot the data plugin
 // writes (out/data/sitemap.json) on first paint, then live SSE keeps
 // it current. No second API endpoint.
 const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
-    .entities('public', { initialUrl: '/data/sitemap.json' })
+    .entities('public', { data: { catalog: 'sitemap' } })
 
 function Routes() {
     // Reads the default client from MikserProvider. First paint loads
@@ -214,11 +214,11 @@ import { generateMikserRoutes } from 'mikser-io-sdk-react'
 
 const MIKSER_URL = process.env.MIKSER_URL || 'http://localhost:3001'
 
-// Same single client as the runtime editor. initialUrl points at the
+// Same single client as the runtime editor. data.catalog points at the
 // static snapshot the data plugin writes — generateMikserRoutes
 // consults it before falling back to a fresh list() call.
 const client = createClient({ baseUrl: MIKSER_URL })
-    .entities('public', { initialUrl: '/data/sitemap.json' })
+    .entities('public', { data: { catalog: 'sitemap' } })
 
 const routes = (await generateMikserRoutes({
     client,
@@ -358,7 +358,7 @@ document.querySelectorAll('[id^="search-island"]').forEach(el => {
 **The idea:** Stop enumerating routes. Install **one** catch-all pattern in React Router; resolve the document at navigation time via `useDocumentByRoute(path)`. The api plugin's per-query disk cache turns each unique route into an on-demand static file: the first user hits mikser, subsequent users get the cached response served by the reverse proxy. Effectively per-route ISR with no extra config.
 
 ```jsx
-// main.jsx — note no initialUrl, no useMikserRoutes
+// main.jsx — note no data.catalog, no useMikserRoutes
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

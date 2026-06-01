@@ -9,7 +9,7 @@ import { mapRoute } from './route-mapping.jsx'
  */
 export default function AppEditor() {
   // useMikserRoutes reads the default client from MikserProvider —
-  // configured in main.editor.jsx with initialUrl pointing at the
+  // configured in main.editor.jsx with data.catalog pointing at the
   // static sitemap snapshot. First paint loads from that file; SSE
   // keeps the route table current.
   const routes = useMikserRoutes({ mapRoute })

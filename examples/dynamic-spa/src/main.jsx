@@ -9,7 +9,7 @@ const MIKSER_URL = import.meta.env.VITE_MIKSER_URL || 'http://localhost:3001'
 
 // Scenario D — Dynamic routes.
 //
-//   No initialUrl. No useMikserRoutes. No /data/sitemap.json snapshot.
+//   No data.catalog. No useMikserRoutes. No /data/sitemap.json snapshot.
 //
 // Why: when the catalog is past ~5–10k routes, loading every route
 // into a snapshot at boot is the wrong shape. Install one catch-all
