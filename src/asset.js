@@ -1,8 +1,8 @@
-// Asset / image reference resolution — same provider/hook pattern as
-// href, scoped to asset entities. Useful when assets carry metadata
-// the UI needs (dimensions, srcset, alt) and you want to look them up
-// by reference rather than re-fetching per render.
+// Asset / image reference resolution — React-reactive shell around
+// sdk-api's pure createAssetIndex. Lives in its own context so it can
+// be used independently from the href index.
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createAssetIndex } from 'mikser-io-sdk-api'
 import { useMikserClient } from './client.js'
 
 export const AssetIndexContext = createContext(null)
@@ -14,9 +14,8 @@ function filterKey(filter) {
 }
 
 /**
- * AssetIndexProvider — wraps your tree to expose a reactive asset
- * index. Same shape as the href index; lives in its own context so the
- * two can be used independently.
+ * AssetIndexProvider — subscribes to asset entities, rebuilds the
+ * index via sdk-api's createAssetIndex, and exposes it via context.
  *
  *   <AssetIndexProvider>
  *     <App />
@@ -28,7 +27,7 @@ export function AssetIndexProvider({
     children,
 }) {
     const client = clientArg ?? useMikserClient()
-    const [index, setIndex] = useState({})
+    const [assets, setAssets] = useState([])
 
     const effectiveFilter = filter ?? { type: 'asset' }
     const filterRef = useRef(effectiveFilter)
@@ -39,20 +38,9 @@ export function AssetIndexProvider({
         let cancelled = false
         const dispose = client.live(
             filterRef.current,
-            (assets) => {
+            (docs) => {
                 if (cancelled) return
-                const next = {}
-                for (const a of assets) {
-                    next[a.id] = {
-                        url:    a.meta?.destination ?? a.meta?.url ?? a.id,
-                        width:  a.meta?.width,
-                        height: a.meta?.height,
-                        srcset: a.meta?.srcset,
-                        alt:    a.meta?.alt,
-                        meta:   a.meta,
-                    }
-                }
-                setIndex(next)
+                setAssets(docs)
             },
             { fields: ['id', 'meta'] },
         )
@@ -62,6 +50,7 @@ export function AssetIndexProvider({
         }
     }, [client, key])
 
+    const index = useMemo(() => createAssetIndex(assets), [assets])
     return createElement(AssetIndexContext.Provider, { value: index }, children)
 }
 
@@ -72,9 +61,10 @@ export function AssetIndexProvider({
  *   <img {...image('/assets/hero.jpg')} />
  *
  * `asset(ref)` returns the full record (url + dimensions + meta).
- * `image(ref)` returns `{ src, width, height, srcSet, alt }` suitable
- * for spreading onto an <img>. Note: `srcSet` (camelCase) for React's
- * JSX prop naming.
+ * `image(ref)` returns `{ src, width, height, srcSet, alt }` — note
+ * `srcSet` (camelCase) for React's JSX prop naming, even though
+ * sdk-api emits `srcset` to match the HTML attribute. The wrapper
+ * remaps it here.
  *
  * Returns null for unresolved refs — components should branch on that.
  */
@@ -86,18 +76,15 @@ export function useAsset() {
         )
     }
 
-    const asset = useCallback((ref) => index[ref] ?? null, [index])
+    const asset = useCallback((ref) => index.asset(ref), [index])
 
     const image = useCallback((ref) => {
-        const a = index[ref]
+        const a = index.image(ref)
         if (!a) return null
-        return {
-            src:    a.url,
-            width:  a.width,
-            height: a.height,
-            srcSet: a.srcset,    // React JSX uses srcSet (camelCase)
-            alt:    a.alt,
-        }
+        // sdk-api returns lowercase `srcset` (HTML); React JSX prefers
+        // camelCase `srcSet`. Remap here without dropping other fields.
+        const { srcset, ...rest } = a
+        return srcset !== undefined ? { ...rest, srcSet: srcset } : rest
     }, [index])
 
     return { asset, image, index }

@@ -1,6 +1,6 @@
 {
     "name": "mikser-io-sdk-react",
-    "version": "0.4.4",
+    "version": "0.5.0",
     "description": "React hooks and router integration for mikser-io",
     "type": "module",
     "main": "index.js",
@@ -39,7 +39,7 @@
     },
     "homepage": "https://github.com/almero-digital-marketing/mikser-io-sdk-react#readme",
     "peerDependencies": {
-        "mikser-io-sdk-api": "^2.4.0",
+        "mikser-io-sdk-api": "^3.1.0",
         "react": "^18.0.0 || ^19.0.0",
         "react-router-dom": "^6.0.0 || ^7.0.0"
     },
