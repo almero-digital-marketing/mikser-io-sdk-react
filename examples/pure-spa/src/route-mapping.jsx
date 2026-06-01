@@ -6,7 +6,10 @@ import ProductView from './views/ProductView.jsx'
 import LandingView from './views/LandingView.jsx'
 import PageView from './views/PageView.jsx'
 
-export const viewForLayout = {
+// Dispatch by meta.component, not meta.layout — layout stays reserved
+// for mikser's SSG render pipeline (the islands example uses it).
+// Keeping them separate avoids "layout 'page' not found" warnings.
+export const viewForComponent = {
   page: PageView,
   article: ArticleView,
   product: ProductView,
@@ -20,16 +23,31 @@ export const indexViews = {
   Home,
 }
 
+// Resolve URL path: prefer meta.route, fall back to destination
+// (mikser computes this from source path + cleanUrls). Returns null
+// to skip documents with neither — fragments, partials, etc.
+function routeFor(document) {
+  if (document.meta?.route) return document.meta.route
+  if (document.destination) {
+    return document.destination
+      .replace(/\/index\.html?$/, '/')
+      .replace(/\.html?$/, '')
+  }
+  return null
+}
+
 /**
  * mapRoute — turn a mikser catalog entry into a React Router route object.
  *
- * document: { id, route, meta: { layout, title, ... } }
- * Returns { path, element } as expected by useMikserRoutes / useRoutes.
+ * document: { id, meta: { component, route, title, ... }, destination }
+ * Returns { path, element } or null to skip.
  */
 export function mapRoute(document) {
-  const View = viewForLayout[document?.meta?.layout] ?? PageView
+  const path = routeFor(document)
+  if (!path) return null
+  const View = viewForComponent[document?.meta?.component] ?? PageView
   return {
-    path: document.route,
+    path,
     element: <View id={document.id} />,
   }
 }

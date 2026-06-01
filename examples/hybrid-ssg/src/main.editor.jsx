@@ -6,13 +6,18 @@ import { MikserProvider } from 'mikser-io-sdk-react'
 import AppEditor from './App.editor.jsx'
 
 const MIKSER_URL = import.meta.env.VITE_MIKSER_URL || 'http://localhost:3001'
-const client = createClient({ url: MIKSER_URL }).entities('public')
+// Two clients, one root. documents for useDocument inside views;
+// sitemap drives the editor's useMikserRoutes and benefits from
+// server-side cache: true + reverse-proxy failover.
+const root = createClient({ baseUrl: MIKSER_URL })
+const documents = root.entities('public')
+const sitemap = root.entities('sitemap')
 
 createRoot(document.getElementById('app')).render(
   <React.StrictMode>
-    <MikserProvider client={client}>
+    <MikserProvider client={documents}>
       <BrowserRouter>
-        <AppEditor />
+        <AppEditor sitemap={sitemap} />
       </BrowserRouter>
     </MikserProvider>
   </React.StrictMode>,

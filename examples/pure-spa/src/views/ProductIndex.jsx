@@ -3,7 +3,7 @@ import { useDocuments } from 'mikser-io-sdk-react'
 
 export default function ProductIndex() {
   const { documents: products } = useDocuments({
-    filter: { 'meta.layout': 'product' },
+    filter: { 'meta.component': 'product' },
     sort: { 'meta.title': 1 },
   })
 

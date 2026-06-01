@@ -1,5 +1,5 @@
 import { Link, useRoutes } from 'react-router-dom'
-import { viewForLayout } from './route-mapping.jsx'
+import { viewForComponent } from './route-mapping.jsx'
 
 /**
  * Public (static) shell. The route manifest is generated at build time by
@@ -9,7 +9,7 @@ import { viewForLayout } from './route-mapping.jsx'
  */
 export default function AppPublic({ routes: manifest }) {
   const routes = manifest.map((entry) => {
-    const View = viewForLayout[entry.layout] ?? viewForLayout.page
+    const View = viewForComponent[entry.component] ?? viewForComponent.page
     return { path: entry.path, element: <View id={entry.id} /> }
   })
 

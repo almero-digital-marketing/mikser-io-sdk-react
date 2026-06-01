@@ -7,13 +7,21 @@ import App from './App.jsx'
 
 const MIKSER_URL = import.meta.env.VITE_MIKSER_URL || 'http://localhost:3001'
 
-const client = createClient({ url: MIKSER_URL }).entities('public')
+// Two clients, one root:
+//   - documents → full content fetch via useDocument inside views
+//   - sitemap   → narrow router data via useMikserRoutes in App.
+//                 Server-side `cache: true` writes responses to disk;
+//                 a reverse proxy can fail over to the cache when
+//                 mikser is down — transparent to the SDK.
+const root = createClient({ baseUrl: MIKSER_URL })
+const documents = root.entities('public')
+const sitemap = root.entities('sitemap')
 
 createRoot(document.getElementById('app')).render(
   <React.StrictMode>
-    <MikserProvider client={client}>
+    <MikserProvider client={documents}>
       <BrowserRouter>
-        <App />
+        <App sitemap={sitemap} />
       </BrowserRouter>
     </MikserProvider>
   </React.StrictMode>,

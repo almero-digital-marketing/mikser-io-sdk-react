@@ -15,9 +15,13 @@ const staticRoutes = [
   { path: '/products', element: <ProductIndex /> },
 ]
 
-export default function App() {
+export default function App({ sitemap }) {
   // Live route array, rebuilt whenever the mikser catalog changes.
+  // Uses the sitemap client (passed from main.jsx) — narrow payload,
+  // server-side cache: true so a reverse proxy can fall back to disk
+  // when mikser is down, transparent to the SDK.
   const routes = useMikserRoutes({
+    client: sitemap,
     mapRoute,
     staticRoutes,
     notFoundElement: <NotFound />,

@@ -3,7 +3,7 @@ import { useDocuments } from 'mikser-io-sdk-react'
 
 export default function ArticleIndex() {
   const { documents: articles, loading } = useDocuments({
-    filter: { 'meta.layout': 'article' },
+    filter: { 'meta.component': 'article' },
     sort: { 'meta.date': -1 },
     fields: ['id', 'route', 'meta'],
   })
