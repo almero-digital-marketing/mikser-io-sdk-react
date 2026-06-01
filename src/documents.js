@@ -141,3 +141,82 @@ export function useDocuments(query = {}, { client: clientArg } = {}) {
 
     return { documents, loading, error, refresh }
 }
+
+/**
+ * Live single-document lookup by URL route. Resolves the document
+ * whose `meta.route` matches the given path; stays subscribed for
+ * updates. Use this in the catch-all view of a SPA with dynamic
+ * routes — the right shape when the catalog is too large to enumerate
+ * via the snapshot/registered-routes approach.
+ *
+ * Each unique route resolves through the api plugin's per-query cache,
+ * so the first user pays an API round-trip and subsequent users get
+ * the cached file via the reverse proxy — effectively on-demand SSG
+ * with no extra config.
+ *
+ *   import { useLocation } from 'react-router-dom'
+ *   const { pathname } = useLocation()
+ *   const { document, loading } = useDocumentByRoute(pathname)
+ *
+ * Extra options:
+ *   - `extraFilter`: merged into the filter (default `{ 'meta.published': true }`).
+ *     Pass `{}` to disable the published filter; pass other fields to add them.
+ *   - `client`: override the default entities client.
+ */
+export function useDocumentByRoute(path, {
+    client: clientArg,
+    extraFilter = { 'meta.published': true },
+} = {}) {
+    const client = clientArg ?? useMikserClient()
+
+    const [document, setDocument] = useState(null)
+    const [loading,  setLoading]  = useState(true)
+    const [error,    setError]    = useState(null)
+    const [refreshTick, setRefreshTick] = useState(0)
+
+    // Snapshot extraFilter into a stable signature for the effect dep.
+    // Recreating { 'meta.published': true } between renders shouldn't
+    // re-subscribe; an actual shape change should.
+    const extraKey = useMemo(() => JSON.stringify(extraFilter ?? null), [extraFilter])
+
+    useEffect(() => {
+        if (path == null || path === '') {
+            setDocument(null)
+            setLoading(false)
+            setError(null)
+            return
+        }
+
+        setLoading(true)
+        setError(null)
+        let cancelled = false
+
+        const filter = { 'meta.route': path, ...(extraFilter ?? {}) }
+        const dispose = client.live(
+            filter,
+            (items) => {
+                if (cancelled) return
+                setDocument(items[0] ?? null)
+                setLoading(false)
+            },
+            {
+                limit: 1,
+                onError: (err) => {
+                    if (cancelled) return
+                    setError(err)
+                    setLoading(false)
+                },
+            },
+        )
+
+        return () => {
+            cancelled = true
+            dispose?.()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [client, path, extraKey, refreshTick])
+
+    const refresh = useCallback(() => setRefreshTick(t => t + 1), [])
+
+    return { document, loading, error, refresh }
+}

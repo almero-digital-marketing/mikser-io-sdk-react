@@ -8,7 +8,7 @@
 // ./src — one file per concern:
 //
 //   src/client.js     MikserProvider, useMikserClient
-//   src/documents.js  useDocument, useDocuments
+//   src/documents.js  useDocument, useDocuments, useDocumentByRoute
 //   src/router.js     useMikserRoutes, generateMikserRoutes
 //   src/href.js       HrefIndexProvider, useHref, useAlternates
 //   src/asset.js      AssetIndexProvider, useAsset
@@ -25,7 +25,7 @@
 // paths are not part of the API contract.
 
 export { MikserProvider, useMikserClient }     from './src/client.js'
-export { useDocument, useDocuments }           from './src/documents.js'
+export { useDocument, useDocuments, useDocumentByRoute } from './src/documents.js'
 export { useMikserRoutes, generateMikserRoutes } from './src/router.js'
 export { HrefIndexProvider, useHref, useAlternates } from './src/href.js'
 export { AssetIndexProvider, useAsset }        from './src/asset.js'

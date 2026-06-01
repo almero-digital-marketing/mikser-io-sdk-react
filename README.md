@@ -111,6 +111,7 @@ Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` st
 | `useMikserClient()` | Direct access to the client for ad-hoc calls (`urlFor`, `render`, etc.). |
 | `useDocument<T>(id, options?)` | Live single-document hook. Re-subscribes when `id` changes between renders. |
 | `useDocuments<T>(query, options?)` | Live list hook. Re-subscribes when the query shape changes. |
+| `useDocumentByRoute<T>(path, options?)` | Live single-document lookup by URL route — for catch-all views in dynamic-routes SPAs. See "Dynamic routes" below. |
 | `useMikserRoutes({ mapRoute, ... })` | Live array of React Router route objects. Pass to `useRoutes()` or `createBrowserRouter()`. |
 | `generateMikserRoutes({ mapRoute, ... })` | Build-time one-shot enumerator. Right for Vite SSG / Next static export. |
 | `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
@@ -171,6 +172,82 @@ function Routes() {
 ```
 
 Note: the data-router variant tears down router state on every catalog change. Prefer the first pattern unless you specifically need loaders / actions on dynamic routes.
+
+## Dynamic routes — for catalogs too big to enumerate
+
+The router patterns above register every catalog route up-front from the `/data/sitemap.json` snapshot. That works perfectly up to ~5–10k routes; past that the snapshot itself becomes the bottleneck on first paint. The alternative shape is one catch-all route + per-navigation lookup via `useDocumentByRoute()`.
+
+```jsx
+// main.jsx — note no initialUrl, no useMikserRoutes
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { createClient } from 'mikser-io-sdk-api'
+import { MikserProvider } from 'mikser-io-sdk-react'
+import App from './App.jsx'
+
+const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
+    .entities('public')
+
+createRoot(document.getElementById('root')).render(
+    <MikserProvider client={documents}>
+        <BrowserRouter>
+            <App />
+        </BrowserRouter>
+    </MikserProvider>,
+)
+```
+
+```jsx
+// App.jsx
+import { Routes, Route } from 'react-router-dom'
+import Home from './views/Home.jsx'
+import Search from './views/Search.jsx'
+import DocumentResolver from './views/DocumentResolver.jsx'
+
+export default function App() {
+    return (
+        <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/search" element={<Search />} />
+            {/* Single catch-all for everything content-backed */}
+            <Route path="*" element={<DocumentResolver />} />
+        </Routes>
+    )
+}
+```
+
+```jsx
+// views/DocumentResolver.jsx
+import { useLocation } from 'react-router-dom'
+import { useDocumentByRoute } from 'mikser-io-sdk-react'
+import ArticleView from './ArticleView.jsx'
+import ProductView from './ProductView.jsx'
+import PageView    from './PageView.jsx'
+import NotFound    from './NotFound.jsx'
+
+const views = { article: ArticleView, product: ProductView, page: PageView }
+
+export default function DocumentResolver() {
+    const { pathname } = useLocation()
+    const { document, loading } = useDocumentByRoute(pathname)
+
+    if (loading) return <p>Loading…</p>
+    if (!document) return <NotFound />
+    const View = views[document.meta?.component] ?? PageView
+    return <View entityId={document.id} />
+}
+```
+
+**How the caching works.** `useDocumentByRoute` issues `GET /api/public/entities?meta.route=/en/about&meta.published=true&limit=1`. With `cache: true` on the public endpoint, mikser writes that response to disk as a side effect of serving it. The standard nginx failover config (see [mikser-io's caching docs](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/caching.md)) serves the file directly on subsequent requests. So:
+
+- **First visitor to a route:** SDK → mikser → response served + written to disk
+- **Every subsequent visitor:** SDK → proxy serves the cached file (mikser idle)
+- **Catalog change:** entire cache directory cleared, re-warms on demand
+
+Effectively per-route ISR — the cache is built by real user traffic.
+
+**When to pick this shape:** when the `/data/sitemap.json` snapshot would be over ~1–2 MB, or you have more than ~5k routes. The trade-off is one extra API roundtrip on the *first* visit to a cold route (warm thereafter). Doesn't scale down well to small catalogs — you're paying the resolver tax for routes you could have enumerated for free.
 
 ## Multilingual `useHref` / `useAlternates`
 
