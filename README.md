@@ -59,16 +59,105 @@ function Article({ id }) {
 }
 ```
 
-### Adding routes — one endpoint, one snapshot
+## Surface
 
-Configure **one** entities client. Pass `initialUrl` pointing at the static `out/data/sitemap.json` snapshot the [`data` plugin's `catalog`](https://github.com/almero-digital-marketing/mikser-io) entry writes — the SDK loads that on first paint (CDN-cacheable, no API roundtrip), then opens a live SSE subscribe on the same `/public` endpoint for incremental updates.
+| Hook / component | What it does |
+|---|---|
+| `<MikserProvider client>` | Context provider — every hook below reads the client from here. |
+| `useMikserClient()` | Direct access to the client for ad-hoc calls (`urlFor`, `render`, etc.). |
+| `useDocument<T>(id, options?)` | Live single-document hook. Re-subscribes when `id` changes between renders. |
+| `useDocuments<T>(query, options?)` | Live list hook. Re-subscribes when the query shape changes. |
+| `useDocumentByRoute<T>(path, options?)` | Live single-document lookup by URL route — for catch-all views in dynamic-routes SPAs. See Scenario D. |
+| `useMikserRoutes({ mapRoute, ... })` | Live array of React Router route objects. Pass to `useRoutes()` or `createBrowserRouter()`. |
+| `generateMikserRoutes({ mapRoute, ... })` | Build-time one-shot enumerator. Right for Vite SSG / Next static export. |
+| `useMikserStatus({ timeoutMs? })` | Reactive backend status — `'connecting' \| 'ready' \| 'unreachable'`. Use for connection guards. |
+| `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
+| `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
+| `<AssetIndexProvider>` + `useAsset()` | Resolve asset references to URL + dimensions + srcset. |
+| `<MikserVectorProvider client>` + `useMikserVectorClient()` | Bridges `mikser-io-sdk-vector` into React context. |
+| `useSimilar<T>(store, query, options?)` | Live semantic search with debounce + stale-result discard. |
+
+## Scenarios — picking the right shape for your project
+
+Four common shapes. Each makes a different trade between SEO, build complexity, and catalog scale. Pick before you start; mixing them mid-project is painful.
+
+> ### 📦 Runnable starter projects
+>
+> Each scenario ships as a complete starter under [`examples/`](./examples) — Vite config, `package.json`, full source tree, its own README explaining how to run it. Clone and modify rather than translate the snippets below into project structure.
+>
+> | Folder | What's in it |
+> |---|---|
+> | **[`examples/mikser-content`](./examples/mikser-content)** | **The shared content server** — a standalone mikser project that supplies the catalog to the three React apps below. Start it first. |
+> | **[`examples/pure-spa`](./examples/pure-spa)** (scenario A) | Vite + React + `useMikserRoutes` against your own router |
+> | **[`examples/hybrid-ssg`](./examples/hybrid-ssg)** (scenario B) | Manifest-based public build (`generateMikserRoutes`) + a live editor SPA from one catalog |
+> | **[`examples/islands`](./examples/islands)** (scenario C) | Multi-entry Vite build, React islands mounting onto mikser-rendered HTML |
+
+### A) Pure SPA — runtime everything, live everywhere
+
+**When:** Editor UIs, admin dashboards, internal apps. SEO doesn't matter. You want the fastest dev loop and the lowest build complexity.
+
+**How it works:** No build-time route enumeration. The app constructs its own router (React Router), then wires `useMikserRoutes` against it to slot catalog routes in alongside the hand-coded ones. Editing a document → SSE event → routes array re-renders → UI updates. No rebuild ever.
+
+Two integration patterns, both supported by the same `useMikserRoutes` hook:
+
+#### `useRoutes` (recommended — no router teardown on catalog changes)
 
 ```jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { BrowserRouter, useRoutes } from 'react-router-dom'
+import { createClient } from 'mikser-io-sdk-api'
+import { MikserProvider, useMikserRoutes } from 'mikser-io-sdk-react'
+import DocumentPage from './DocumentPage'
+import NotFound from './NotFound'
+
+// One client. initialUrl pulls the static snapshot the data plugin
+// writes (out/data/sitemap.json) on first paint, then live SSE keeps
+// it current. No second API endpoint.
 const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
     .entities('public', { initialUrl: '/data/sitemap.json' })
+
+function Routes() {
+    // Reads the default client from MikserProvider. First paint loads
+    // from the static snapshot; SSE deltas keep it current.
+    const routes = useMikserRoutes({
+        mapRoute: document => ({
+            path: document.meta.route,
+            element: <DocumentPage entityId={document.id} />,
+        }),
+        notFoundElement: <NotFound />,
+    })
+    return useRoutes(routes)
+}
+
+createRoot(document.getElementById('root')).render(
+    <MikserProvider client={documents}>
+        <BrowserRouter>
+            <Routes />
+        </BrowserRouter>
+    </MikserProvider>,
+)
 ```
 
-That's it on the client. The server side is one `data.catalog` block:
+#### `createBrowserRouter` (data routers — loaders, actions)
+
+```jsx
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { useMemo } from 'react'
+import { useMikserRoutes } from 'mikser-io-sdk-react'
+
+function Routes() {
+    const routes = useMikserRoutes({ mapRoute: document => ({ /* ... */ }) })
+    const router = useMemo(() => createBrowserRouter(routes), [routes])
+    return <RouterProvider router={router} />
+}
+```
+
+Note: the data-router variant tears down router state on every catalog change. Prefer the first pattern unless you specifically need loaders / actions on dynamic routes.
+
+#### The matching server config
+
+The `out/data/sitemap.json` snapshot is produced by the `data` plugin's `catalog` config on the mikser side:
 
 ```js
 // mikser-content/mikser.config.js  (server side)
@@ -99,83 +188,173 @@ That's it on the client. The server side is one `data.catalog` block:
 }
 ```
 
-The `data` plugin runs at finalize, writes one file per catalog entry under `out/data/`, served as a static asset by mikser's built-in handler. The `pick` projection is enforced server-side so the snapshot stays small. `query` lines up 1:1 with the `live()` filter the SDK opens after first paint — initial state matches what SSE will send.
+Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide.
 
-Dispatch in `mapRoute` is on `meta.component`, not `meta.layout` — `layout` stays reserved for mikser's SSG render pipeline so the two never collide. See [mikser-io-sdk-api → `initialUrl`](https://github.com/almero-digital-marketing/mikser-io-sdk-api#initialurl--pair-with-the-data-plugin-for-fast-first-paint) for the client side, [`examples/pure-spa`](./examples/pure-spa) for the full pattern, and [`examples/mikser-content/mikser.config.js`](./examples/mikser-content/mikser.config.js) for the full config in context.
+**Trade-offs:** Fastest to set up. Worst for SEO (the public-facing HTML is empty until JS loads). Initial boot pays the snapshot fetch (~50-200ms typical, CDN-cacheable).
 
-## Surface
+> **📦 Full starter project:** **[`examples/pure-spa`](./examples/pure-spa)** — clone, `npm install`, set `VITE_MIKSER_URL`, `npm run dev`.
 
-| Hook / component | What it does |
-|---|---|
-| `<MikserProvider client>` | Context provider — every hook below reads the client from here. |
-| `useMikserClient()` | Direct access to the client for ad-hoc calls (`urlFor`, `render`, etc.). |
-| `useDocument<T>(id, options?)` | Live single-document hook. Re-subscribes when `id` changes between renders. |
-| `useDocuments<T>(query, options?)` | Live list hook. Re-subscribes when the query shape changes. |
-| `useDocumentByRoute<T>(path, options?)` | Live single-document lookup by URL route — for catch-all views in dynamic-routes SPAs. See "Dynamic routes" below. |
-| `useMikserRoutes({ mapRoute, ... })` | Live array of React Router route objects. Pass to `useRoutes()` or `createBrowserRouter()`. |
-| `generateMikserRoutes({ mapRoute, ... })` | Build-time one-shot enumerator. Right for Vite SSG / Next static export. |
-| `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
-| `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
-| `<AssetIndexProvider>` + `useAsset()` | Resolve asset references to URL + dimensions + srcset. |
-| `<MikserVectorProvider client>` + `useMikserVectorClient()` | Bridges `mikser-io-sdk-vector` into React context. |
-| `useSimilar<T>(store, query, options?)` | Live semantic search with debounce + stale-result discard. |
+---
 
-## Router integration
+### B) Hybrid — SSG for public, SPA-with-live for editor
 
-Two patterns, both supported by the same `useMikserRoutes` hook:
+**When:** Marketing sites, blogs, documentation, any content site that needs SEO. The typical agency project.
 
-### `useRoutes` (recommended — no router teardown on catalog changes)
+**The idea:** Two builds from the same content. The public deploy is a manifest-driven SPA (one JS bundle that reads `routes.json` and renders client-side) or full-HTML prerender via [`vite-react-ssg`](https://github.com/kingyue737/vite-react-ssg). The editor / admin app is the SPA from scenario A, talking to the same mikser server. Both share the same `mapRoute` function, so they agree on what a route is.
+
+**Build script** — runs in CI before the production build:
+
+```js
+// scripts/generate-routes.mjs
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { createClient } from 'mikser-io-sdk-api'
+import { generateMikserRoutes } from 'mikser-io-sdk-react'
+
+const MIKSER_URL = process.env.MIKSER_URL || 'http://localhost:3001'
+
+// Same single client as the runtime editor. initialUrl points at the
+// static snapshot the data plugin writes — generateMikserRoutes
+// consults it before falling back to a fresh list() call.
+const client = createClient({ baseUrl: MIKSER_URL })
+    .entities('public', { initialUrl: '/data/sitemap.json' })
+
+const routes = (await generateMikserRoutes({
+    client,
+    mapRoute: document => ({
+        path:      document.meta.route,
+        component: document?.meta?.component ?? 'page',
+        id:        document.id,
+        title:     document?.meta?.title ?? '',
+    }),
+})).filter(Boolean)
+
+mkdirSync(resolve('src/generated'), { recursive: true })
+writeFileSync(
+    resolve('src/generated/routes.json'),
+    JSON.stringify(routes, null, 2),
+)
+
+console.log(`Generated ${routes.length} routes → src/generated/routes.json`)
+```
+
+**Public entry** — reads the manifest, no `list()` call at boot:
 
 ```jsx
+// src/main.public.jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
 import { BrowserRouter, useRoutes } from 'react-router-dom'
-import { useMikserRoutes } from 'mikser-io-sdk-react'
-import DocumentPage from './DocumentPage'
-import NotFound from './NotFound'
+import { createClient } from 'mikser-io-sdk-api'
+import { MikserProvider } from 'mikser-io-sdk-react'
+import routesManifest from './generated/routes.json'
+import { viewForComponent } from './route-mapping.jsx'
 
-function Routes() {
-    // Reads the default client from MikserProvider — the one
-    // configured with initialUrl above. First paint loads from the
-    // static snapshot; SSE deltas keep it current.
-    const routes = useMikserRoutes({
-        mapRoute: document => ({
-            path: document.meta.route,
-            element: <DocumentPage entityId={document.id} />,
-        }),
-        notFoundElement: <NotFound />,
+const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
+    .entities('public')
+
+function PublicRoutes() {
+    const routes = routesManifest.map(r => {
+        const View = viewForComponent[r.component] ?? viewForComponent.page
+        return { path: r.path, element: <View id={r.id} /> }
     })
     return useRoutes(routes)
 }
 
-export default function App() {
-    return (
-        <MikserProvider client={documents}>
-            <BrowserRouter>
-                <Routes />
-            </BrowserRouter>
-        </MikserProvider>
-    )
-}
+createRoot(document.getElementById('app')).render(
+    <MikserProvider client={documents}>
+        <BrowserRouter>
+            <PublicRoutes />
+        </BrowserRouter>
+    </MikserProvider>,
+)
 ```
 
-### `createBrowserRouter` (data routers — loaders, actions)
+**Editor app** — separate entry point, uses scenario A (`useMikserRoutes` + live composables). Mounted under `/admin/*` or on a different domain. Stays live always.
+
+```
+project/
+  src/
+    main.public.jsx    ← reads generated/routes.json, no SSE
+    main.editor.jsx    ← uses createMikserRoutes (live)
+    route-mapping.jsx  ← shared viewForComponent + mapRoute
+  scripts/
+    generate-routes.mjs ← run before vite build
+```
+
+**Trade-offs:** Two entry points, two build steps, slightly more wiring. In exchange: SEO-correct, CDN-friendly public deploy + live editor preview from the same content source. For full HTML prerender (not just manifest-driven SPA), swap the public side to `vite-react-ssg` — the manifest + route-mapping pieces stay the same.
+
+> **📦 Full starter project:** **[`examples/hybrid-ssg`](./examples/hybrid-ssg)** — the load-bearing file is `src/route-mapping.jsx`, shared between three consumers (build script, public entry, editor entry).
+
+---
+
+### C) Mikser-rendered HTML + React islands
+
+**When:** Content-heavy sites where most pages are pure content (mikser renders them perfectly) but a few features need interactivity (search box, contact form, filters, live counts).
+
+**The idea:** Mikser is responsible for the HTML. React is just an enhancement layer that mounts onto specific DOM nodes the server-rendered HTML emits. No React Router involved — the URLs are real URLs served as static files.
+
+**Public site:** `mikser build` produces `out/`. Deploy `out/` as static. The HTML includes mount points for the React islands:
+
+```html
+<!-- documents/en/search.md → rendered via layouts/page.html.hbs -->
+<article>
+    <h1>{{meta.title}}</h1>
+    <div id="search-island" data-endpoint="public"></div>
+</article>
+```
+
+**Island bundle:** A tiny multi-entry Vite build, one entry per island. Each entry finds its mount node, reads `data-*` attributes for config, mounts React:
 
 ```jsx
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import { useMemo } from 'react'
-import { useMikserRoutes } from 'mikser-io-sdk-react'
+// src/islands/search.jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { createClient } from 'mikser-io-sdk-api'
+import { MikserProvider, useDocuments } from 'mikser-io-sdk-react'
 
-function Routes() {
-    const routes = useMikserRoutes({ mapRoute: document => ({ /* ... */ }) })
-    const router = useMemo(() => createBrowserRouter(routes), [routes])
-    return <RouterProvider router={router} />
+function Search({ endpoint }) {
+    const [q, setQ] = React.useState('')
+    const { documents } = useDocuments({
+        filter: q ? { 'meta.title': { $regex: q, $options: 'i' } } : {},
+        fields: ['id', 'meta.title', 'meta.summary', 'meta.route'],
+        limit: 10,
+    })
+    return (
+        <div>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search…" />
+            <ul>
+                {documents.map(d => (
+                    <li key={d.id}><a href={d.meta?.route}>{d.meta?.title}</a></li>
+                ))}
+            </ul>
+        </div>
+    )
 }
+
+// Mount on every #search-island the page has
+document.querySelectorAll('[id^="search-island"]').forEach(el => {
+    const documents = createClient({ baseUrl: '/' })   // same-origin
+        .entities(el.dataset.endpoint)
+    createRoot(el).render(
+        <MikserProvider client={documents}>
+            <Search endpoint={el.dataset.endpoint} />
+        </MikserProvider>,
+    )
+})
 ```
 
-Note: the data-router variant tears down router state on every catalog change. Prefer the first pattern unless you specifically need loaders / actions on dynamic routes.
+**Trade-offs:** Best performance (static HTML + small React bundle, lazy-loaded). Simplest deployment (just files). But React doesn't own routing — the URL structure is mikser's responsibility.
 
-## Dynamic routes — for catalogs too big to enumerate
+> **📦 Full starter project:** **[`examples/islands`](./examples/islands)** — search, booking, cart-counter islands plus a simulated mikser-rendered HTML page showing where they mount.
 
-The router patterns above register every catalog route up-front from the `/data/sitemap.json` snapshot. That works perfectly up to ~5–10k routes; past that the snapshot itself becomes the bottleneck on first paint. The alternative shape is one catch-all route + per-navigation lookup via `useDocumentByRoute()`.
+---
+
+### D) Dynamic routes — for catalogs too big to enumerate
+
+**When:** A content catalog past the ~5k–10k route mark where loading every route into a snapshot at boot stops making sense — large blogs, e-commerce catalogs, knowledge bases, document archives.
+
+**The idea:** Stop enumerating routes. Install **one** catch-all pattern in React Router; resolve the document at navigation time via `useDocumentByRoute(path)`. The api plugin's per-query disk cache turns each unique route into an on-demand static file: the first user hits mikser, subsequent users get the cached response served by the reverse proxy. Effectively per-route ISR with no extra config.
 
 ```jsx
 // main.jsx — note no initialUrl, no useMikserRoutes
@@ -239,7 +418,7 @@ export default function DocumentResolver() {
 }
 ```
 
-**How the caching works.** `useDocumentByRoute` issues `GET /api/public/entities?meta.route=/en/about&meta.published=true&limit=1`. With `cache: true` on the public endpoint, mikser writes that response to disk as a side effect of serving it. The standard nginx failover config (see [mikser-io's caching docs](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/caching.md)) serves the file directly on subsequent requests. So:
+**How the caching works.** `useDocumentByRoute` issues `GET /api/public/entities?meta.route=/en/about&meta.published=true&limit=1`. With `cache: true` on the public endpoint, mikser writes that response to disk as a side effect. The standard nginx failover config (see [mikser-io's caching docs](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/caching.md)) serves the file directly on subsequent requests:
 
 - **First visitor to a route:** SDK → mikser → response served + written to disk
 - **Every subsequent visitor:** SDK → proxy serves the cached file (mikser idle)
@@ -247,7 +426,39 @@ export default function DocumentResolver() {
 
 Effectively per-route ISR — the cache is built by real user traffic.
 
-**When to pick this shape:** when the `/data/sitemap.json` snapshot would be over ~1–2 MB, or you have more than ~5k routes. The trade-off is one extra API roundtrip on the *first* visit to a cold route (warm thereafter). Doesn't scale down well to small catalogs — you're paying the resolver tax for routes you could have enumerated for free.
+**Trade-offs:** First paint on a cold route pays one API roundtrip — slower than scenario A's pre-loaded snapshot for routes you've never visited, faster than A's initial snapshot fetch for repeat visits to cached routes. Doesn't scale down well to small catalogs (you're paying the resolver tax for routes you could have enumerated for free) but scales up beautifully — works the same at 10k routes as at 10M.
+
+When to pick D over A: roughly when `/data/sitemap.json` would emit more than ~1–2 MB, or you have more than ~5k routes. The snapshot is dragging first paint down more than the resolver does.
+
+> **📦 No dedicated starter** — the diff from scenario A is small (drop `initialUrl`, replace registered routes with a catch-all, use `useDocumentByRoute`). The [`examples/pure-spa`](./examples/pure-spa) starter is the right place to start; the [Claude plugin's SPA recipe](https://github.com/almero-digital-marketing/mikser-io-claude-plugin) shows both modes side-by-side.
+
+---
+
+### Picking between them
+
+| Question | A (SPA) | B (Hybrid SSG) | C (Islands) | D (Dynamic SPA) |
+|---|---|---|---|---|
+| Do you need SEO? | No | **Yes** | **Yes** | No |
+| Is most of the page interactive? | **Yes** | Maybe | No | **Yes** |
+| Is content mostly static? | No | Yes | **Yes** | No |
+| Editor + admin in same app? | **Yes** | Editor is the SPA half | Separate admin app | **Yes** |
+| Build complexity tolerance | Low | Medium | Low | Low |
+| Mikser plugins (post-pdf, post-mjml) used? | No | Maybe | **Yes** | No |
+| Catalog size | < 5k routes | any | any | > 5k routes |
+
+**Rule of thumb for an agency client site:** start with **C** (islands) for the public site if the content is mostly static, **B** (hybrid SSG) if there's significant interactivity, **A** (pure SPA) only for the admin app. Pick **D** when A would otherwise be your choice but the catalog is past the snapshot ceiling. A/D and B/C often coexist in the same project — the admin is always SPA-shaped; the public face is the project-by-project decision.
+
+### When to use which hook
+
+| Hook | Best for | Avoid when |
+|---|---|---|
+| `client.list()` directly | Build-time, SSR (no live updates needed) | Component that needs to react to changes |
+| `useDocument()` / `useDocuments()` | Components in any scenario | Plain Node scripts (use the SDK directly) |
+| `useDocumentByRoute()` | Scenario D catch-all view — resolve the current path to a document | Scenarios A/B (you have the entity id; use `useDocument`) |
+| `live()` underneath all three | Always — they wrap it | — |
+| `useMikserRoutes` | Scenarios A or B (editor app) — your router, mikser slots in | Scenarios C (no router), D (catch-all only) |
+| `generateMikserRoutes` | Scenario B (build step) | Scenarios A, C, D |
+| `useHref` + `useAsset` | Any scenario with React components | Mikser-rendered HTML (use the render-href plugin server-side instead) |
 
 ## Multilingual `useHref` / `useAlternates`
 
