@@ -11,7 +11,7 @@ const MIKSER_URL = import.meta.env.VITE_MIKSER_URL || 'http://localhost:3001'
 // writes (out/data/sitemap.json) on first paint, then live SSE keeps
 // it current. No second API endpoint.
 const documents = createClient({ baseUrl: MIKSER_URL })
-  .entities('public', { data: { catalog: 'sitemap' } })
+  .entities('public', { data: { catalog: 'sitemap', entities: 'page' } })
 
 createRoot(document.getElementById('app')).render(
   <React.StrictMode>

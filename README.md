@@ -116,7 +116,7 @@ import NotFound from './NotFound'
 // writes (out/data/sitemap.json) on first paint, then live SSE keeps
 // it current. No second API endpoint.
 const documents = createClient({ baseUrl: import.meta.env.VITE_MIKSER_URL })
-    .entities('public', { data: { catalog: 'sitemap' } })
+    .entities('public', { data: { catalog: 'sitemap', entities: 'page' } })
 
 function Routes() {
     // Reads the default client from MikserProvider. First paint loads
@@ -176,6 +176,15 @@ The `out/data/sitemap.json` snapshot is produced by the `data` plugin's `catalog
                 pick: ['id', 'destination', 'meta.component', 'meta.route', 'meta.title'],
             },
         },
+        entities: {
+            // out/data/<entity.name>.page.json — one file per published
+            // document, with full content. useDocument(id) reads from
+            // these on first paint; live updates still flow over SSE.
+            page: {
+                query: e => e.type === 'document' && e.meta?.published,
+                pick: ['id', 'meta', 'content'],
+            },
+        },
     },
     api: {
         endpoints: {
@@ -218,7 +227,7 @@ const MIKSER_URL = process.env.MIKSER_URL || 'http://localhost:3001'
 // static snapshot the data plugin writes — generateMikserRoutes
 // consults it before falling back to a fresh list() call.
 const client = createClient({ baseUrl: MIKSER_URL })
-    .entities('public', { data: { catalog: 'sitemap' } })
+    .entities('public', { data: { catalog: 'sitemap', entities: 'page' } })
 
 const routes = (await generateMikserRoutes({
     client,

@@ -13,7 +13,7 @@ const MIKSER_URL = process.env.MIKSER_URL || 'http://localhost:3001'
 // — generateMikserRoutes consults it before falling back to a fresh
 // list() call.
 const client = createClient({ baseUrl: MIKSER_URL })
-  .entities('public', { data: { catalog: 'sitemap' } })
+  .entities('public', { data: { catalog: 'sitemap', entities: 'page' } })
 
 function routeFor(d) {
   if (d.meta?.route) return d.meta.route

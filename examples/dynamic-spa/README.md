@@ -77,7 +77,7 @@ If you're already familiar with [`examples/pure-spa`](../pure-spa), here's what 
 
 | | pure-spa (Scenario A) | dynamic-spa (Scenario D) |
 |---|---|---|
-| Client setup | `entities('public', { data: { catalog: 'sitemap' } })` | `entities('public')` — no snapshot |
+| Client setup | `entities('public', { data: { catalog: 'sitemap', entities: 'page' } })` | `entities('public')` — no snapshot |
 | Router | `useMikserRoutes` + `useRoutes(routes)` | One `<Route path="*">` catch-all |
 | `route-mapping.jsx` | Has it, maps catalog entries to React Router descriptors | Doesn't exist — dispatch happens inline in DocumentResolver |
 | `mikser.config.js` | Has `data.catalog.sitemap` block | Can drop the block — no snapshot consumed |
