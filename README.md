@@ -428,7 +428,7 @@ export default function DocumentResolver() {
 }
 ```
 
-**How the caching works.** `useDocumentByRoute` issues `GET /api/public/entities?meta.route=/en/about&meta.published=true&limit=1`. With `cache: true` on the public endpoint, mikser writes that response to disk as a side effect. The standard nginx failover config (see [mikser-io's caching docs](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/caching.md)) serves the file directly on subsequent requests:
+**How the caching works.** `useDocumentByRoute` issues a request like `GET /api/public/entities?meta.route=/en/about&meta.published=true&limit=1&cache=4f3a2c1d8e9b6f7a`. The SDK appends `cache=<sha256-prefix>` automatically — the same hash the server uses for the on-disk filename. With `cache: true` on the public endpoint, mikser writes the response to `out/api/public/entities/4f3a2c1d8e9b6f7a.json`. The standard nginx config (`try_files /api/public/entities/$arg_cache.json @proxy`; see [mikser-io's caching docs](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/caching.md)) serves the file directly on subsequent requests via the client-provided hint, no Lua needed:
 
 - **First visitor to a route:** SDK → mikser → response served + written to disk
 - **Every subsequent visitor:** SDK → proxy serves the cached file (mikser idle)
@@ -556,6 +556,93 @@ function Hero() {
 ```
 
 `image()` returns `{ src, width, height, srcSet, alt }` — React JSX prop names, so it spreads onto `<img>` directly.
+
+## References & inline expansion
+
+Reference fields written as `$author: /authors/dick` (per [ADR-0007](https://github.com/almero-digital-marketing/mikser-io/blob/main/documentation/decisions/0007-references-declaration-and-expansion.md)) arrive on the wire as bare href strings — `document.meta.author === '/authors/dick'`. Two ways to turn them into entity objects, picked by whether you want the deep data to stay live.
+
+**Chained `useDocument`** — each level stays live independently. Updates to the author propagate without re-fetching the article. Best when both layers update independently.
+
+```jsx
+const { document: article } = useDocument(id)
+const { document: author }  = useDocument(article?.meta.author)
+// article.meta.author → '/authors/dick'  (string)
+// author.meta.name    → 'Dick Marinov'
+```
+
+**`expand` on `useDocument` / `useDocuments`** — the initial snapshot arrives with refs already resolved to entity objects. Best when you'd otherwise pay N round-trips on first paint (a multi-hop chain like `author.organization`, or arrays of refs like `sections.*.image`).
+
+```jsx
+import { useDocument } from 'mikser-io-sdk-react'
+
+function ArticleWithAuthor({ id }) {
+    // One round-trip: article + author + author.organization + hero,
+    // all inlined and ready to render.
+    const { document: article } = useDocument(id, {
+        expand: ['author.organization', 'hero'],
+    })
+    if (!article) return null
+
+    return (
+        <article>
+            <h1>{article.meta.title}</h1>
+            <p>
+                By {article.meta.author.meta.name}
+                {' — '}
+                {article.meta.author.meta.organization.meta.name}
+            </p>
+            <img src={article.meta.hero.meta.url} alt={article.meta.hero.meta.alt} />
+        </article>
+    )
+}
+```
+
+For lists:
+
+```jsx
+import { useDocuments } from 'mikser-io-sdk-react'
+
+function ArticlesByAuthor({ authorId }) {
+    // All articles by this author with each article's hero inlined.
+    const { documents: articles } = useDocuments({
+        filter: { 'meta.component': 'article', 'meta.author': authorId },
+        sort:   { 'meta.date': -1 },
+        expand: ['hero'],
+    })
+
+    return (
+        <ul>
+            {articles.map(a => (
+                <li key={a.id}>
+                    {a.meta.hero && (
+                        <img src={a.meta.hero.meta.url} alt={a.meta.hero.meta.alt} />
+                    )}
+                    <h2>{a.meta.title}</h2>
+                </li>
+            ))}
+        </ul>
+    )
+}
+```
+
+**Path forms:** dot-notation walks expanded entities (`author.organization`); `*` iterates `$`-keyed arrays (`sections.*.image`); both canonical (`$author`) and normalized (`author`) segments are accepted.
+
+**Server caps** default to `maxDepth: 5`, `maxPaths: 20`, `maxResolved: 100` per request — configurable via `api.expand.{...}` in `mikser.config.js`. Exceeding any cap surfaces as a `MikserError` with `status === 422` on the underlying call.
+
+**SSE deltas stay expanded.** Both the initial snapshot AND every forward update emit fully-expanded entities. The api plugin's subscribe handler registers an engine-level `runtime.refs.subscribeGraph` against the subscription's filter + expand; mutations to *any* entity within the expansion graph (the root, the author, the author's organization, …) trigger a re-emit with the freshly-resolved tree. Reactive consumers see consistent expanded data across the lifetime of the subscription.
+
+For ad-hoc one-shot reads that don't need to participate in the SSE subscription — sitemap builders, SSG enumeration, AI agent calls — drop to the underlying `mikser-io-sdk-api` client:
+
+```jsx
+import { useMikserClient } from 'mikser-io-sdk-react'
+const client = useMikserClient()
+const { items } = await client.entities('public').list({
+    filter: { id },
+    expand: ['author.organization', 'hero'],
+})
+```
+
+Missing targets or cycles silently leave the ref as a string at the deepest position — same convention as the underlying api, per ADR-0007 B6.
 
 ## Semantic search — `MikserVectorProvider` + `useSimilar`
 

@@ -18,7 +18,7 @@ import { useMikserClient } from './client.js'
  * `id` changes between renders cause the subscription to re-establish
  * for the new id automatically.
  */
-export function useDocument(id, { client: clientArg } = {}) {
+export function useDocument(id, { client: clientArg, expand, fields } = {}) {
     const client = clientArg ?? useMikserClient()
 
     const [document, setDocument] = useState(null)
@@ -26,6 +26,11 @@ export function useDocument(id, { client: clientArg } = {}) {
     const [error,    setError]    = useState(null)
     // refreshTick forces re-subscription without changing id
     const [refreshTick, setRefreshTick] = useState(0)
+
+    // Stabilise the array options across renders so a new literal
+    // (`expand={['author']}`) doesn't kick off a needless resubscribe.
+    const expandKey = expand ? JSON.stringify(expand) : ''
+    const fieldsKey = fields ? JSON.stringify(fields) : ''
 
     useEffect(() => {
         if (id == null || id === '') {
@@ -48,6 +53,8 @@ export function useDocument(id, { client: clientArg } = {}) {
             },
             {
                 limit: 1,
+                fields,
+                expand,                  // see ADR-0007 — inline-resolve $-refs
                 onError: (err) => {
                     if (cancelled) return
                     setError(err)
@@ -60,7 +67,7 @@ export function useDocument(id, { client: clientArg } = {}) {
             cancelled = true
             dispose?.()
         }
-    }, [client, id, refreshTick])
+    }, [client, id, refreshTick, expandKey, fieldsKey])
 
     const refresh = useCallback(() => setRefreshTick(t => t + 1), [])
 
@@ -78,6 +85,7 @@ function queryKey(query) {
         F: query.fields ?? null,
         l: query.limit  ?? null,
         k: query.skip   ?? null,
+        e: query.expand ?? null,   // expand participates in the resubscribe key
     })
 }
 
@@ -107,7 +115,7 @@ export function useDocuments(query = {}, { client: clientArg } = {}) {
 
     useEffect(() => {
         const current = queryRef.current ?? {}
-        const { filter = {}, sort, fields, limit, skip } = current
+        const { filter = {}, sort, fields, limit, skip, expand } = current
 
         setLoading(true)
         setError(null)
@@ -122,6 +130,7 @@ export function useDocuments(query = {}, { client: clientArg } = {}) {
             },
             {
                 sort, fields, limit, skip,
+                expand,                  // see ADR-0007 — inline-resolve $-refs
                 onError: (err) => {
                     if (cancelled) return
                     setError(err)
