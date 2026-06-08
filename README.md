@@ -17,7 +17,7 @@
 
 **One mental model across every rendering shape** — runtime-everything SPA, hybrid (prerendered public + live admin), or mikser-rendered HTML with React islands mounted into specific DOM nodes. Same hooks, different mount. See [`examples/`](./examples) for the three patterns side-by-side.
 
-**Typed at the seam.** Pair with [`mikser-io-plugin-schemas`](https://github.com/almero-digital-marketing/mikser-io-plugin-schemas) to author Zod schemas alongside your content; `useDocument<{ meta: MetaByLayout<'article'> }>(id)` then carries the front-matter shape straight into your JSX.
+**Typed at the seam.** Pair with [`mikser-io-schemas`](https://github.com/almero-digital-marketing/mikser-io-schemas) to author Zod schemas alongside your content; `useDocument<{ meta: MetaByLayout<'article'> }>(id)` then carries the front-matter shape straight into your JSX.
 
 Pairs with [`mikser-io-sdk-api`](https://github.com/almero-digital-marketing/mikser-io-sdk-api) — that package handles transport (HTTP + SSE); this one wraps it in React idioms.
 
@@ -723,7 +723,7 @@ const { results } = useSimilar<ProductHit>('products', query)
 The hooks are generic on the entity type:
 
 ```ts
-import type { MetaByLayout } from '../mikser-content/entities'   // emitted by mikser-io-plugin-schemas
+import type { MetaByLayout } from '../mikser-content/entities'   // emitted by mikser-io-schemas
 
 type Article = { id: string; meta: MetaByLayout<'article'> }
 
@@ -731,7 +731,7 @@ const { document } = useDocument<Article>(id)
 // document.meta.title  ← typed
 ```
 
-`mikser-io-sdk-api` provides the `EntitiesClient`, `Filter`, and `ListQuery` types out of the box. Pair with [`mikser-io-plugin-schemas`](https://github.com/almero-digital-marketing/mikser-io-plugin-schemas) for entity meta types generated from Zod schemas.
+`mikser-io-sdk-api` provides the `EntitiesClient`, `Filter`, and `ListQuery` types out of the box. Pair with [`mikser-io-schemas`](https://github.com/almero-digital-marketing/mikser-io-schemas) for entity meta types generated from Zod schemas.
 
 ## Design notes
 
