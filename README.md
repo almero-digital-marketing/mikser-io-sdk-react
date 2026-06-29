@@ -10,7 +10,7 @@
 | **Multilingual URLs** | `href('/about')` → `/en/about` or `/fr/a-propos` per locale |
 | **Content by reference** | `meta('/menu').products` — read a known document's fields by its logical `$ref`, no extra query |
 | **Hreflang + switchers** | `useAlternates({ route })` |
-| **Asset metadata** | `image('/assets/hero.jpg')` → `{ src, srcSet, width, height, alt }` |
+| **Asset URLs** | `assetUrl(clip, 'presentation')` → `<cms>/assets/presentation/<clip>` |
 | **Semantic search** | `useSimilar(store, query)` with built-in debounce + stale-discard |
 | **Live routes** | `useMikserRoutes({ mapRoute })` → array — pass to `useRoutes()` or `createBrowserRouter()` |
 | **Build-time routes** | `generateMikserRoutes()` for Vite SSG / Next static export |
@@ -75,7 +75,7 @@ function Article({ id }) {
 | `useMikserStatus({ timeoutMs? })` | Reactive backend status — `'connecting' \| 'ready' \| 'unreachable'`. Use for connection guards. |
 | `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
 | `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
-| `<AssetIndexProvider>` + `useAsset()` | Resolve asset references to URL + dimensions + srcset. |
+| `<AssetIndexProvider>` + `useAsset()` | Build preset-derivative URLs; look up managed asset entities. |
 | `<MikserVectorProvider client>` + `useMikserVectorClient()` | Bridges `mikser-io-sdk-vector` into React context. |
 | `useSimilar<T>(store, query, options?)` | Live semantic search with debounce + stale-result discard. |
 
@@ -536,6 +536,30 @@ In both cases the current page's own language is excluded from `alternates` (it'
 
 ## Asset resolution
 
+mikser's `assets()` plugin is a *preset transcoder* (video, image, pdf, audio…), not an image pipeline — so the SDK's asset helpers are format-neutral. `useAsset()` returns `{ assetUrl, asset, index }`.
+
+### `assetUrl(source, preset, { ext })` — the primary helper
+
+Builds a transcoded-derivative URL by the `assets()` plugin convention: `<baseUrl>/assets/<preset>/<source>`. `baseUrl` is bound automatically from the installed client. `ext`, when given, is the preset's output format and **replaces** the source extension — a poster preset turns `.mp4` → `.jpg`. It's pure: no `<AssetIndexProvider>` needed, just call `useAsset().assetUrl(...)`.
+
+```jsx
+import { useAsset } from 'mikser-io-sdk-react'
+
+function Clip({ clip }) {
+    const { assetUrl } = useAsset()
+    return (
+        <video
+            src={assetUrl(clip, 'presentation')}
+            poster={assetUrl(clip, 'poster', { ext: 'jpg' })}
+        />
+    )
+}
+```
+
+### `asset(ref)` — managed-entity lookup
+
+Format-neutral: returns `{ url, meta } | null` for a managed asset *entity* looked up by id. `meta` is the entity's raw meta block (opaque: mime, dimensions, duration — whatever the preset emitted). It only resolves inside `<AssetIndexProvider>` (otherwise returns null).
+
 ```jsx
 import { AssetIndexProvider, useAsset } from 'mikser-io-sdk-react'
 
@@ -550,14 +574,14 @@ function App() {
 }
 
 function Hero() {
-    const { image } = useAsset()
-    const props = image('/assets/hero.jpg')
-    if (!props) return null
-    return <img {...props} />
+    const { asset } = useAsset()
+    const hero = asset('/assets/hero.jpg')
+    if (!hero) return null
+    return <img src={hero.url} alt={hero.meta?.alt} />
 }
 ```
 
-`image()` returns `{ src, width, height, srcSet, alt }` — React JSX prop names, so it spreads onto `<img>` directly.
+Image-specific rendering (`srcSet`, `<img>` props) is a consumer concern: read `meta` where you actually know an asset is an image. `<AssetIndexProvider>` is needed **only** for `asset(ref)` entity lookups — `assetUrl` works without it.
 
 ## References & inline expansion
 
@@ -742,7 +766,6 @@ A few React-specific choices worth knowing:
 - **`useDocument(id)` takes a raw value, not a getter.** React re-runs hooks on every render, so the current `id` value is always fresh — pass `useDocument(props.id)` directly. The subscription re-establishes via a `useEffect` dependency on `id`.
 - **`useDocuments(query)` keys re-subscription on the query *shape*, not identity.** The hook computes a stable signature from `filter` / `sort` / `fields` / `limit` / `skip`, so passing a freshly-constructed object literal each render doesn't churn the SSE subscription. You don't need to `useMemo` the query.
 - **`useMikserRoutes` returns an array, not a router.** React Router v6+ consumes a routes array (`useRoutes(routes)`), so the SDK hands you exactly that and lets you decide how to mount it. With `useRoutes` there's no router teardown when the catalog changes — routes are added and removed in place.
-- **`useAsset().image()` returns `srcSet` (camelCase).** That's React's JSX prop name, so the result spreads straight onto `<img>`.
 
 ## Examples
 

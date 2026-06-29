@@ -190,16 +190,18 @@ export interface UseAlternatesResult {
 export declare function useAlternates(options: UseAlternatesOptions): UseAlternatesResult
 
 // ---------------------------------------------------------------------------
-// asset() — asset / image reference resolution
+// asset() — preset URL convention + managed-entity lookup
 // ---------------------------------------------------------------------------
 
 export interface AssetRecord {
-    url:    string
-    width?: number
-    height?: number
-    srcset?: string
-    alt?:   string
-    meta?:  Record<string, unknown>
+    url:   string
+    /** Raw entity meta block — opaque (mime, dimensions, duration, …). */
+    meta?: Record<string, unknown>
+}
+
+export interface AssetUrlOptions {
+    /** Preset output format — replaces the source extension (.mp4 → .jpg). */
+    ext?: string
 }
 
 export interface AssetIndexProviderProps {
@@ -213,16 +215,17 @@ export declare function AssetIndexProvider(props: AssetIndexProviderProps): JSX.
 export type AssetIndex = Record<string, AssetRecord>
 
 export interface UseAssetResult {
+    /**
+     * URL of a transcoded derivative by the assets() convention, baseUrl
+     * bound from the installed client. Needs no AssetIndexProvider.
+     */
+    assetUrl: (source: string, preset: string, options?: AssetUrlOptions) => string
+    /**
+     * Managed asset entity by reference → { url, meta } | null. Resolves
+     * only inside <AssetIndexProvider>.
+     */
     asset: (ref: string) => AssetRecord | null
-    /** Returns props suitable for spreading onto a JSX <img>. */
-    image: (ref: string) => {
-        src:    string
-        width?: number
-        height?: number
-        srcSet?: string
-        alt?:   string
-    } | null
-    index: AssetIndex
+    index: AssetIndex | null
 }
 
 export declare function useAsset(): UseAssetResult

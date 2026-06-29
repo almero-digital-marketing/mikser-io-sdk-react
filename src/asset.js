@@ -1,9 +1,14 @@
-// Asset / image reference resolution — React-reactive shell around
-// sdk-api's pure createAssetIndex. Lives in its own context so it can
-// be used independently from the href index.
+// Asset resolution — React-reactive shell around sdk-api's format-neutral
+// asset helpers.
+//
+//   useAsset().assetUrl(source, preset, { ext })  — preset → derivative
+//     URL by convention; pure, needs no provider (just the client's
+//     baseUrl). The common case.
+//   useAsset().asset(ref)                          — managed-entity
+//     metadata lookup; only resolves inside <AssetIndexProvider>.
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { createAssetIndex } from 'mikser-io-sdk-api'
-import { useMikserClient } from './client.js'
+import { assetUrl as buildAssetUrl, createAssetIndex } from 'mikser-io-sdk-api'
+import { MikserClientContext, useMikserClient } from './client.js'
 
 export const AssetIndexContext = createContext(null)
 
@@ -14,8 +19,9 @@ function filterKey(filter) {
 }
 
 /**
- * AssetIndexProvider — subscribes to asset entities, rebuilds the
- * index via sdk-api's createAssetIndex, and exposes it via context.
+ * AssetIndexProvider — subscribes to managed asset entities and exposes
+ * the index via context. Only needed for useAsset().asset(ref); the
+ * assetUrl() convention helper needs no provider.
  *
  *   <AssetIndexProvider>
  *     <App />
@@ -55,37 +61,27 @@ export function AssetIndexProvider({
 }
 
 /**
- * Read the asset index. Returns `{ asset, image, index }`.
+ * Asset access. Returns `{ assetUrl, asset, index }`.
  *
- *   const { asset, image } = useAsset()
- *   <img {...image('/assets/hero.jpg')} />
+ *   const { assetUrl } = useAsset()
+ *   <video src={assetUrl(clip, 'presentation')}
+ *          poster={assetUrl(clip, 'poster', { ext: 'jpg' })} />
  *
- * `asset(ref)` returns the full record (url + dimensions + meta).
- * `image(ref)` returns `{ src, width, height, srcSet, alt }` — note
- * `srcSet` (camelCase) for React's JSX prop naming, even though
- * sdk-api emits `srcset` to match the HTML attribute. The wrapper
- * remaps it here.
- *
- * Returns null for unresolved refs — components should branch on that.
+ * `assetUrl(source, preset, { ext })` builds the derivative URL by
+ * convention, baseUrl from the installed client; needs no provider.
+ * `asset(ref)` → `{ url, meta } | null` for a managed asset entity, and
+ * only resolves inside <AssetIndexProvider> (otherwise null).
  */
 export function useAsset() {
+    const client = useContext(MikserClientContext)
     const index = useContext(AssetIndexContext)
-    if (!index) {
-        throw new Error(
-            'useAsset: <AssetIndexProvider> must wrap your tree first'
-        )
-    }
 
-    const asset = useCallback((ref) => index.asset(ref), [index])
+    const baseUrl = client?.baseUrl ?? ''
+    const assetUrl = useCallback(
+        (source, preset, options = {}) => buildAssetUrl(source, preset, { baseUrl, ...options }),
+        [baseUrl],
+    )
+    const asset = useCallback((ref) => (index ? index.asset(ref) : null), [index])
 
-    const image = useCallback((ref) => {
-        const a = index.image(ref)
-        if (!a) return null
-        // sdk-api returns lowercase `srcset` (HTML); React JSX prefers
-        // camelCase `srcSet`. Remap here without dropping other fields.
-        const { srcset, ...rest } = a
-        return srcset !== undefined ? { ...rest, srcSet: srcset } : rest
-    }, [index])
-
-    return { asset, image, index }
+    return { assetUrl, asset, index }
 }
