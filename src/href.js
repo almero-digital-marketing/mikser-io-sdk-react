@@ -61,14 +61,20 @@ export function HrefIndexProvider({
 }
 
 /**
- * Read the href index. Returns `{ href, refFor, index }`.
+ * Read the href index. Returns `{ href, refFor, doc, meta, index }`.
  *
- *   const { href } = useHref(locale)
- *   <Link to={href('/about')}>About</Link>
+ *   const { href, meta } = useHref(locale)
+ *   <Link to={href('/about')}>About</Link>            // ref → URL
+ *   {meta('/menu')?.products.map(p => <li>{p.name}</li>)}  // ref → content
+ *
+ * `href`/`refFor` resolve URLs; `doc`/`meta` resolve the document a
+ * logical reference points at — the content companion. All read from
+ * the same live index, so they re-render when the referenced document
+ * changes.
  *
  * `defaultLang` overrides the provider's default for this hook
  * instance — typically your i18n locale. When the caller doesn't pass
- * a lang to href(), this is the fallback.
+ * a lang, this is the fallback.
  */
 export function useHref(defaultLang) {
     const ctx = useContext(HrefIndexContext)
@@ -81,8 +87,10 @@ export function useHref(defaultLang) {
     const fallback = defaultLang ?? providerDefault
 
     const api = useMemo(() => ({
-        href: (ref, lang) => index.href(ref, lang ?? fallback),
+        href:   (ref, lang) => index.href(ref, lang ?? fallback),
         refFor: (url) => index.refFor(url),
+        doc:    (ref, lang) => index.docFor(ref, lang ?? fallback),
+        meta:   (ref, lang) => index.metaFor(ref, lang ?? fallback),
         index,
     }), [index, fallback])
 

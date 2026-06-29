@@ -7,6 +7,7 @@
 | **Live content** | `const { document } = useDocument(id)` — re-renders as the file changes |
 | **Live lists** | `const { documents } = useDocuments({ filter, sort, fields })` |
 | **Multilingual URLs** | `href('/about')` → `/en/about` or `/fr/a-propos` per locale |
+| **Content by reference** | `meta('/menu').products` — read a known document's fields by its logical `$ref`, no extra query |
 | **Hreflang + switchers** | `useAlternates({ route })` |
 | **Asset metadata** | `image('/assets/hero.jpg')` → `{ src, srcSet, width, height, alt }` |
 | **Semantic search** | `useSimilar(store, query)` with built-in debounce + stale-discard |
