@@ -6,8 +6,10 @@
 // stick with useState + useEffect for clarity — the SSE stream is a
 // long-lived subscription that fans out to multiple React leaves, not
 // a snapshot store.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMikserClient } from './client.js'
+
+export const CurrentDocumentContext = createContext(null)
 
 /**
  * Live single-document hook. Resolves the document by id and stays in sync
@@ -228,4 +230,83 @@ export function useDocumentByRoute(path, {
     const refresh = useCallback(() => setRefreshTick(t => t + 1), [])
 
     return { document, loading, error, refresh }
+}
+
+/**
+ * CurrentDocumentProvider — subscribe ONCE to the current-route document
+ * and share it with the whole tree via useCurrentDocument(). The third
+ * member of the provide-once family alongside HrefIndexProvider /
+ * AssetIndexProvider — for the singular ambient "current page" document
+ * a content SPA reads everywhere. Without it, each useDocumentByRoute()
+ * call opens its own identical subscription to the same document.
+ *
+ *   // root
+ *   const location = useLocation()           // react-router (your choice)
+ *   <CurrentDocumentProvider route={location.pathname}>
+ *     <App />
+ *   </CurrentDocumentProvider>
+ *
+ *   // any descendant
+ *   const { document } = useCurrentDocument()
+ *
+ * `route` is the current path string (the SDK stays decoupled from your
+ * router). `resolve` maps a path to the lookup filter (default
+ * `meta.route === path`). `extraFilter` is merged in (default none —
+ * pass `{ 'meta.published': true }` to require published).
+ */
+export function CurrentDocumentProvider({
+    route,
+    client: clientArg,
+    resolve = (path) => ({ 'meta.route': path }),
+    extraFilter,
+    fields,
+    expand,
+    children,
+}) {
+    const client = clientArg ?? useMikserClient()
+    const [document, setDocument] = useState(null)
+    const [loading,  setLoading]  = useState(true)
+
+    const filter = (route == null || route === '')
+        ? null
+        : { ...resolve(route), ...(extraFilter ?? {}) }
+    const key = JSON.stringify(filter)
+    const filterRef = useRef(filter)
+    filterRef.current = filter
+
+    useEffect(() => {
+        if (!filterRef.current) {
+            setDocument(null)
+            setLoading(false)
+            return
+        }
+        let cancelled = false
+        setLoading(true)
+        const dispose = client.live(
+            filterRef.current,
+            (items) => {
+                if (cancelled) return
+                setDocument(items[0] ?? null)
+                setLoading(false)
+            },
+            { limit: 1, fields, expand, onError: () => { if (!cancelled) setLoading(false) } },
+        )
+        return () => { cancelled = true; dispose?.() }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [client, key])
+
+    const value = useMemo(() => ({ document, loading }), [document, loading])
+    return createElement(CurrentDocumentContext.Provider, { value }, children)
+}
+
+/**
+ * Read the shared current-route document. Returns `{ document, loading }`.
+ * Requires a <CurrentDocumentProvider> ancestor.
+ */
+export function useCurrentDocument() {
+    const ctx = useContext(CurrentDocumentContext)
+    if (!ctx) {
+        throw new Error('useCurrentDocument: wrap your tree in <CurrentDocumentProvider> first')
+    }
+    return ctx
 }
