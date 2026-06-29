@@ -11,6 +11,22 @@ import { useMikserClient } from './client.js'
 
 export const CurrentDocumentContext = createContext(null)
 
+// Normalize a route source to a path string. Same logic across the
+// vue/react/svelte SDKs: a string, a getter, or the route object your
+// router hands you — a react-router location (`.pathname`), a vue-router
+// route (`.path`), or a SvelteKit page (`.url.pathname`). The SDK reads
+// a field; it never imports a router, so `route={location}` works as
+// well as `route={location.pathname}`.
+function toRoutePath(route) {
+    if (route == null) return null
+    if (typeof route === 'function') return toRoutePath(route())
+    if (typeof route === 'string') return route
+    if (typeof route.pathname === 'string') return route.pathname
+    if (typeof route.path === 'string') return route.path
+    if (route.url && typeof route.url.pathname === 'string') return route.url.pathname
+    return null
+}
+
 /**
  * Live single-document hook. Resolves the document by id and stays in sync
  * with changes via client.live().
@@ -249,10 +265,13 @@ export function useDocumentByRoute(path, {
  *   // any descendant
  *   const { document } = useCurrentDocument()
  *
- * `route` is the current path string (the SDK stays decoupled from your
- * router). `resolve` maps a path to the lookup filter (default
- * `meta.route === path`). `extraFilter` is merged in (default none —
- * pass `{ 'meta.published': true }` to require published).
+ * `route` is the current-route source — pass react-router's location
+ * object (`route={location}` — the SDK reads `.pathname`) or just the
+ * path string (`route={location.pathname}`). The SDK stays decoupled
+ * from your router; it reads a field, never imports one. `resolve` maps
+ * a path to the lookup filter (default `meta.route === path`).
+ * `extraFilter` is merged in (default none — pass
+ * `{ 'meta.published': true }` to require published).
  */
 export function CurrentDocumentProvider({
     route,
@@ -267,9 +286,10 @@ export function CurrentDocumentProvider({
     const [document, setDocument] = useState(null)
     const [loading,  setLoading]  = useState(true)
 
-    const filter = (route == null || route === '')
+    const path = toRoutePath(route)
+    const filter = (path == null || path === '')
         ? null
-        : { ...resolve(route), ...(extraFilter ?? {}) }
+        : { ...resolve(path), ...(extraFilter ?? {}) }
     const key = JSON.stringify(filter)
     const filterRef = useRef(filter)
     filterRef.current = filter
