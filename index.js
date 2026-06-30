@@ -29,9 +29,10 @@ export {
     useDocument, useDocuments, useDocumentByRoute,
     CurrentDocumentProvider, useCurrentDocument,
 } from './src/documents.js'
-export { useMikserRoutes, generateMikserRoutes } from './src/router.js'
+export { useMikserRoutes, generateMikserRoutes, useUnmatchedRouteWarning } from './src/router.js'
 export { HrefIndexProvider, useHref, useAlternates } from './src/href.js'
-export { AssetIndexProvider, useAsset }        from './src/asset.js'
+export { AssetIndexProvider, useAsset, watchAssetFallbacks } from './src/asset.js'
+export { createCache, cacheKey, useCached, useCachedDocument } from './src/cache.js'
 export { useMikserStatus }                     from './src/status.js'
 export {
     MikserVectorProvider,

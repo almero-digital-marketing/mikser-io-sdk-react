@@ -1,51 +1,51 @@
 {
-  "name": "mikser-io-sdk-react",
-  "version": "0.9.0",
-  "description": "React hooks and router integration for mikser-io",
-  "type": "module",
-  "main": "index.js",
-  "types": "index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./index.d.ts",
-      "default": "./index.js"
+    "name": "mikser-io-sdk-react",
+    "version": "0.12.0",
+    "description": "React hooks and router integration for mikser-io",
+    "type": "module",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "default": "./index.js"
+        },
+        "./src/*": "./src/*"
     },
-    "./src/*": "./src/*"
-  },
-  "files": [
-    "index.js",
-    "index.d.ts",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
-  "scripts": {},
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/almero-digital-marketing/mikser-io-sdk-react.git"
-  },
-  "keywords": [
-    "mikser",
-    "mikser-io",
-    "react",
-    "hooks",
-    "sse",
-    "content"
-  ],
-  "author": "",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/almero-digital-marketing/mikser-io-sdk-react/issues"
-  },
-  "homepage": "https://github.com/almero-digital-marketing/mikser-io-sdk-react#readme",
-  "peerDependencies": {
-    "mikser-io-sdk-api": "^3.5.0",
-    "react": "^18.0.0 || ^19.0.0",
-    "react-router-dom": "^7.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react-router-dom": {
-      "optional": true
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "src",
+        "README.md",
+        "LICENSE"
+    ],
+    "scripts": {},
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/almero-digital-marketing/mikser-io-sdk-react.git"
+    },
+    "keywords": [
+        "mikser",
+        "mikser-io",
+        "react",
+        "hooks",
+        "sse",
+        "content"
+    ],
+    "author": "",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/almero-digital-marketing/mikser-io-sdk-react/issues"
+    },
+    "homepage": "https://github.com/almero-digital-marketing/mikser-io-sdk-react#readme",
+    "peerDependencies": {
+        "mikser-io-sdk-api": "^3.7.0",
+        "react": "^18.0.0 || ^19.0.0",
+        "react-router-dom": "^7.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react-router-dom": {
+            "optional": true
+        }
     }
-  }
 }

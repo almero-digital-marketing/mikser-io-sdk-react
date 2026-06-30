@@ -10,7 +10,7 @@
 | **Multilingual URLs** | `href('/about')` → `/en/about` or `/fr/a-propos` per locale |
 | **Content by reference** | `meta('/menu').products` — read a known document's fields by its logical `$ref`, no extra query |
 | **Hreflang + switchers** | `useAlternates({ route })` |
-| **Asset URLs** | `assetUrl(clip, 'presentation')` → `<cms>/assets/presentation/<clip>` |
+| **Asset URLs** | `url(clip.meta.url)` → `<cms>/...` — join a served path from the catalog to the client base |
 | **Semantic search** | `useSimilar(store, query)` with built-in debounce + stale-discard |
 | **Live routes** | `useMikserRoutes({ mapRoute })` → array — pass to `useRoutes()` or `createBrowserRouter()` |
 | **Build-time routes** | `generateMikserRoutes()` for Vite SSG / Next static export |
@@ -70,12 +70,15 @@ function Article({ id }) {
 | `useDocument<T>(id, options?)` | Live single-document hook. Re-subscribes when `id` changes between renders. |
 | `useDocuments<T>(query, options?)` | Live list hook. Re-subscribes when the query shape changes. |
 | `useDocumentByRoute<T>(path, options?)` | Live single-document lookup by URL route — for catch-all views in dynamic-routes SPAs. See Scenario D. |
+| `<CurrentDocumentProvider route expand?>` + `useCurrentDocument()` | One shared current-route document for the subtree — provide once, read anywhere. References resolve by default (`$` wildcard); `expand={[]}` opts out. |
 | `useMikserRoutes({ mapRoute, ... })` | Live array of React Router route objects. Pass to `useRoutes()` or `createBrowserRouter()`. |
 | `generateMikserRoutes({ mapRoute, ... })` | Build-time one-shot enumerator. Right for Vite SSG / Next static export. |
 | `useMikserStatus({ timeoutMs? })` | Reactive backend status — `'connecting' \| 'ready' \| 'unreachable'`. Use for connection guards. |
 | `<HrefIndexProvider>` + `useHref(lang?)` | Multilingual href abstraction — logical references resolve to per-locale URLs. |
 | `useAlternates({ route, languages? })` | Alternates for hreflang tags and language switchers. |
 | `<AssetIndexProvider>` + `useAsset()` | Build preset-derivative URLs; look up managed asset entities. |
+| `createCache(entities)` | Framework-agnostic load-once request cache — dedupe + memoize over `list()`, keyed by the whole query (`expand` included). Create one, share it. |
+| `useCached(cache, query)` / `useCachedDocument(cache, href, { expand })` | Reactive reads of a `createCache` instance. The lightweight tier next to `useDocument` — load-once for content read often, changed rarely. |
 | `<MikserVectorProvider client>` + `useMikserVectorClient()` | Bridges `mikser-io-sdk-vector` into React context. |
 | `useSimilar<T>(store, query, options?)` | Live semantic search with debounce + stale-result discard. |
 
@@ -466,11 +469,72 @@ When to pick D over A: roughly when `/data/sitemap.json` would emit more than ~1
 |---|---|---|
 | `client.list()` directly | Build-time, SSR (no live updates needed) | Component that needs to react to changes |
 | `useDocument()` / `useDocuments()` | Components in any scenario | Plain Node scripts (use the SDK directly) |
+| `useCached()` / `useCachedDocument()` | Read-often, change-rarely content — system docs, nav, settings. Load-once, expand-capable | Anything that has to stay live (use `useDocument` / `useDocuments`) |
 | `useDocumentByRoute()` | Scenario D catch-all view — resolve the current path to a document | Scenarios A/B (you have the entity id; use `useDocument`) |
+| `<CurrentDocumentProvider>` / `useCurrentDocument()` | Scenario A — share the current route's document across a view's subtree (head + body + media) | A single catch-all view (use `useDocumentByRoute`) |
 | `live()` underneath all three | Always — they wrap it | — |
 | `useMikserRoutes` | Scenarios A or B (editor app) — your router, mikser slots in | Scenarios C (no router), D (catch-all only) |
 | `generateMikserRoutes` | Scenario B (build step) | Scenarios A, C, D |
 | `useHref` + `useAsset` | Any scenario with React components | Mikser-rendered HTML (use the render-href plugin server-side instead) |
+
+## The current-route document
+
+In a per-route SPA (Scenario A) most routes render one document end-to-end — the `<head>`, the body, the media. `<CurrentDocumentProvider>` loads it once for the current route and shares it with the subtree; any child reads it with `useCurrentDocument()`. (This is the per-route-components counterpart to `useDocumentByRoute`, which serves the single catch-all view of Scenario D.)
+
+```jsx
+import { useLocation } from 'react-router-dom'
+import { CurrentDocumentProvider, useCurrentDocument } from 'mikser-io-sdk-react'
+
+function App() {
+  const location = useLocation()          // inside <BrowserRouter>
+  return (
+    <CurrentDocumentProvider route={location.pathname} expand={[]}>
+      <Head />        {/* reads document.meta.head — plain fields, no refs */}
+      <Routes>{/* … */}</Routes>
+    </CurrentDocumentProvider>
+  )
+}
+
+function Head() {
+  const { document } = useCurrentDocument()
+  // …
+}
+```
+
+### Who owns the references
+
+A document carries `$`-keyed references — a `$video`, a `$hero`, a list of `$related`. Resolving them is [`expand`'s](#references--inline-expansion) job, and **the default is the `$` wildcard**: omit `expand` and the document arrives with every reference resolved. But the root provider serves the `<head>` and plain-field readers and wraps *every* route — resolving there makes the login form expand the product videos it never renders. So the root opts **out** with `expand={[]}`, and each view that renders references provides its **own** current-route document (default `['$']`), which shadows the root for its subtree:
+
+```jsx
+function Home() {                     // renders the presentation + FAQ videos
+  const location = useLocation()
+  return (
+    <CurrentDocumentProvider route={location.pathname}>   {/* default expand: ['$'] */}
+      <HomeContent />
+    </CurrentDocumentProvider>
+  )
+}
+```
+
+The principle: **a document doesn't know its consumers, so the consumer declares what to resolve** — not the document (different views of the same doc want different shapes), not the route table, not one app-level provider (it resolves for routes that render nothing). The view that renders the references owns the `expand`. `['$']` is the default because *resolved* is the common case; `[]` is the opt-out for the plain-field path.
+
+A one-line wrapper keeps the `useLocation` plumbing out of every view:
+
+```jsx
+// RouteDocument.jsx
+import { useLocation } from 'react-router-dom'
+import { CurrentDocumentProvider } from 'mikser-io-sdk-react'
+
+export const RouteDocument = ({ expand, children }) => {
+  const location = useLocation()
+  return (
+    <CurrentDocumentProvider route={location.pathname} expand={expand}>
+      {children}
+    </CurrentDocumentProvider>
+  )
+}
+// <RouteDocument expand={[]}> at the root; <RouteDocument> around a ref-rendering view.
+```
 
 ## Multilingual `useHref` / `useAlternates`
 
@@ -536,21 +600,25 @@ In both cases the current page's own language is excluded from `alternates` (it'
 
 ## Asset resolution
 
-mikser's `assets()` plugin is a *preset transcoder* (video, image, pdf, audio…), not an image pipeline — so the SDK's asset helpers are format-neutral. `useAsset()` returns `{ assetUrl, asset, index }`.
+mikser's `assets()` plugin is a *preset transcoder* (video, image, pdf, audio…), not an image pipeline — so the SDK's asset helpers are format-neutral. `useAsset()` returns `{ url, asset, index }`.
 
-### `assetUrl(source, preset, { ext })` — the primary helper
+### `url(ref)` — the primary helper
 
-Builds a transcoded-derivative URL by the `assets()` plugin convention: `<baseUrl>/assets/<preset>/<source>`. `baseUrl` is bound automatically from the installed client. `ext`, when given, is the preset's output format and **replaces** the source extension — a poster preset turns `.mp4` → `.jpg`. It's pure: no `<AssetIndexProvider>` needed, just call `useAsset().assetUrl(...)`.
+Joins a deployed served path to the client base. The engine stamps URLs into entity meta — a served file carries its path at `meta.url`, a media source carries its transcoded-derivative paths at `meta.presets.<name>` — and the catalog surfaces them via `expand`. `url(ref)` takes one of those base-relative served paths and joins it to the base, bound automatically from the installed client. One rule for files and derivatives alike: no client-side `/assets/<preset>/<source>` construction. It's pure: no `<AssetIndexProvider>` needed, just call `useAsset().url(...)`.
+
+`watchAssetFallbacks()` is also re-exported here — a dev-mode detector that flags served URLs which resolve to the SPA index fallback (a typo'd path, a missing derivative) instead of failing loudly. Call it once at boot, guarded so it ships nothing to production: `if (import.meta.env.DEV) watchAssetFallbacks()`.
+
+`useUnmatchedRouteWarning({ routes, pathname, matched })` is the routing-side detector: when `useRoutes` returns null the page goes blank with only a terse react-router warning. Catalog routes live at their (often localized) `meta.route`, so reaching for the canonical href as a path misses — pass the routing signals and it warns with the path, resolving the real route when a route carries `id: document.meta.href`. Decoupled from react-router (kept an optional peer), so you hand it `pathname` (from `useLocation`) and `matched` (e.g. `useRoutes(routes) != null`) rather than the SDK importing the router.
 
 ```jsx
 import { useAsset } from 'mikser-io-sdk-react'
 
 function Clip({ clip }) {
-    const { assetUrl } = useAsset()
+    const { url } = useAsset()
     return (
         <video
-            src={assetUrl(clip, 'presentation')}
-            poster={assetUrl(clip, 'poster', { ext: 'jpg' })}
+            src={url(clip.meta.url)}
+            poster={url(clip.meta.presets.poster)}
         />
     )
 }
@@ -581,7 +649,7 @@ function Hero() {
 }
 ```
 
-Image-specific rendering (`srcSet`, `<img>` props) is a consumer concern: read `meta` where you actually know an asset is an image. `<AssetIndexProvider>` is needed **only** for `asset(ref)` entity lookups — `assetUrl` works without it.
+Image-specific rendering (`srcSet`, `<img>` props) is a consumer concern: read `meta` where you actually know an asset is an image. `<AssetIndexProvider>` is needed **only** for `asset(ref)` entity lookups — `url()` works without it.
 
 ## References & inline expansion
 
@@ -669,6 +737,35 @@ const { items } = await client.entities('public').list({
 ```
 
 Missing targets or cycles silently leave the ref as a string at the deepest position — same convention as the underlying api, per ADR-0007 B6.
+
+## Cached reads — `createCache` + `useCached` / `useCachedDocument`
+
+`useDocument` / `useCurrentDocument` are the always-fresh tier: every hook holds an SSE subscription, every upstream edit re-renders. That's the right default for content that changes while someone's looking at it — articles, lists, anything an editor is touching.
+
+For content that's read on every page but changes rarely — system docs, nav, settings, a footer block — the live tier is overkill. `createCache` is the lightweight tier next to it: load each query **once**, memoize the result, dedupe concurrent calls. No subscription, no re-fetch until you explicitly `invalidate`.
+
+The cache instance is framework-agnostic — it's `createCache` re-exported straight from `mikser-io-sdk-api`, a dedupe + memoize layer over `list()` with `get` / `peek` / `has` / `invalidate` / `subscribe`. You create **one** and share it (module scope, or React context). React reads state through hooks, so the reactive surface is `useCached` / `useCachedDocument` — they trigger the load once per query and re-render when the entry lands or is invalidated (built on `useSyncExternalStore`).
+
+```jsx
+import { createCache, useCachedDocument } from 'mikser-io-sdk-react'
+
+// Once — module scope (or a context value). Pass the entities client.
+const content = createCache(client.entities('public'))
+
+function Products() {
+    const doc = useCachedDocument(content, '/system/products', {
+        expand: ['products.*.video'],
+    })
+    if (!doc) return null
+    return <ProductGrid items={doc.meta.products} />
+}
+```
+
+- **`useCached(cache, query)`** — the general form. Pass any `list()` query; returns the envelope (`{ items, ... }`) or `undefined` until the first load resolves. Triggers the load once per distinct query.
+- **`useCachedDocument(cache, href, { expand } = {})`** — convenience for doc-by-logical-ref: queries `meta.href === href` with `limit: 1` and returns the doc (`items[0]`) or `null`.
+- **The cache key folds in `expand`.** A doc fetched with `expand` is a *distinct* entry from the same doc fetched without — they don't collide, and the expanded one stays expanded for the life of the cache. `cacheKey(query)` is exported if you need the key directly.
+
+Because there's no subscription, the cache is the cheaper tier when both would work. Reach for `useDocument` / `useDocuments` when the data has to stay live; reach for `createCache` when "load it once and keep it" is the honest description of the access pattern. When the underlying content does change, call `content.invalidate(query)` (or `invalidate()` for everything) and the next read re-fetches.
 
 ## Semantic search — `MikserVectorProvider` + `useSimilar`
 

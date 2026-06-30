@@ -11,6 +11,10 @@ import type {
 // useful types from useMikserRoutes / generateMikserRoutes.
 interface RouteObjectLike {
     path?: string
+    /** react-router route id. Set to `document.meta.href` to get the
+     *  resolved-route hint from useUnmatchedRouteWarning (the analog of
+     *  vue-router's `name`). */
+    id?: string
     element?: ReactNode
     children?: RouteObjectLike[]
     [key: string]: unknown
@@ -79,6 +83,41 @@ export declare function useDocuments<T = unknown>(
     options?: UseHookOptions,
 ): UseDocumentsResult<T>
 
+export interface CurrentDocumentProviderProps {
+    /**
+     * Current-route source. Pass react-router's location object
+     * (`route={location}` — the SDK reads `.pathname`) or a path string.
+     */
+    route: string | { readonly pathname: string }
+    /** Override the injected client. */
+    client?: EntitiesClient
+    /** Map a path to the lookup filter (default `{ 'meta.route': path }`). */
+    resolve?: (path: string) => Record<string, unknown>
+    /** Extra filter clauses merged into the lookup (default none). */
+    extraFilter?: Record<string, unknown>
+    /** Restrict the projected fields (default all). */
+    fields?: string[]
+    /**
+     * References to resolve. Defaults to the `$` wildcard — a document comes
+     * with every reference resolved (ADR-0007). Pass `expand={[]}` to opt out,
+     * or a path list to narrow it.
+     */
+    expand?: string[]
+    children?: ReactNode
+}
+
+export declare function CurrentDocumentProvider(props: CurrentDocumentProviderProps): JSX.Element
+
+export interface CurrentDocumentResult<T = unknown> {
+    /** The current-route document, or null while loading / when missing. */
+    document: T | null
+    /** True until the initial fetch resolves. */
+    loading:  boolean
+}
+
+/** Read the shared current-route document from a <CurrentDocumentProvider> ancestor. */
+export declare function useCurrentDocument<T = unknown>(): CurrentDocumentResult<T>
+
 // ---------------------------------------------------------------------------
 // Router integration
 // ---------------------------------------------------------------------------
@@ -102,6 +141,24 @@ export interface UseMikserRoutesOptions {
 export declare function useMikserRoutes(
     options: UseMikserRoutesOptions,
 ): RouteObjectLike[]
+
+/**
+ * Dev-mode detector for the silent "no route matched → null element" class.
+ * Decoupled from react-router: pass the current `pathname` (from useLocation)
+ * and whether a content route `matched` (e.g. `useRoutes(routes) != null`).
+ * When a route carries `id === pathname` (set `id: document.meta.href` in
+ * mapRoute) the warning points at the real route. Reports only.
+ *
+ *   const element = useRoutes(routes)
+ *   const { pathname } = useLocation()
+ *   useUnmatchedRouteWarning({ routes, pathname, matched: element != null })
+ */
+export declare function useUnmatchedRouteWarning(options?: {
+    routes?: RouteObjectLike[]
+    pathname?: string
+    matched?: boolean
+    warn?: (message: string) => void
+}): void
 
 export interface GenerateMikserRoutesOptions<R = RouteObjectLike> {
     client: EntitiesClient
@@ -216,10 +273,10 @@ export type AssetIndex = Record<string, AssetRecord>
 
 export interface UseAssetResult {
     /**
-     * URL of a transcoded derivative by the assets() convention, baseUrl
-     * bound from the installed client. Needs no AssetIndexProvider.
+     * Resolve a served ref to a deployed URL, baseUrl bound from the
+     * installed client. Needs no AssetIndexProvider.
      */
-    assetUrl: (source: string, preset: string, options?: AssetUrlOptions) => string
+    url: (ref?: string) => string
     /**
      * Managed asset entity by reference → { url, meta } | null. Resolves
      * only inside <AssetIndexProvider>.
@@ -229,6 +286,12 @@ export interface UseAssetResult {
 }
 
 export declare function useAsset(): UseAssetResult
+
+/**
+ * Dev-mode load-failure warner: logs a warning when an <img>/<video>
+ * fails to load. Returns a teardown function. No-op outside a browser.
+ */
+export declare function watchAssetFallbacks(options?: { doc?: Document; warn?: (message: string) => void }): () => void
 
 // ---------------------------------------------------------------------------
 // vector() — semantic search (pairs with mikser-io-sdk-vector)
@@ -324,3 +387,26 @@ export interface UseMikserStatusOptions {
  *   return useRoutes(routes)
  */
 export declare function useMikserStatus(options?: UseMikserStatusOptions): MikserStatus
+
+// ---------------------------------------------------------------------------
+// Content cache — re-exported from sdk-api, plus React hooks over it
+// ---------------------------------------------------------------------------
+
+/** Build a cache over an entities client. Re-exported from sdk-api. */
+export declare function createCache(docs: any): any
+
+/** The canonical cache key for a query. Re-exported from sdk-api. */
+export declare function cacheKey(query?: object): string
+
+/**
+ * Subscribe to a cache for the given query and re-render on changes.
+ * Returns the cached envelope, or undefined before the first load.
+ */
+export declare function useCached(cache: any, query: object): object | undefined
+
+/**
+ * Subscribe to a cache for a single document by href. References resolve by
+ * default (`$` wildcard) — pass `expand: []` to opt out, or a path list to
+ * narrow. Returns the document or null.
+ */
+export declare function useCachedDocument(cache: any, href: string, options?: { expand?: string[] }): any | null

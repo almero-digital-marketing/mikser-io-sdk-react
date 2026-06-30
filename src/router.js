@@ -115,3 +115,41 @@ export function useMikserRoutes({
 // share the same enumeration + filter defaults. Re-export here so React
 // users still import it from their framework package.
 export { generateMikserRoutes } from 'mikser-io-sdk-api'
+
+/**
+ * Dev-mode detector for the silent "no route matched → null element" class.
+ * `useRoutes(routes)` returns null when nothing matches and react-router only
+ * logs a terse warning — the page goes blank with no pointer to the cause.
+ * Catalog routes live at their (often localized) `meta.route` path, so
+ * reaching for the canonical href as a path (`/web` when the route is at `/`)
+ * misses.
+ *
+ * Decoupled from react-router (kept an optional peer, like the rest of this
+ * module): you pass the current `pathname` (from `useLocation`) and whether a
+ * content route `matched`. When a route carries `id === pathname` — set
+ * `id: document.meta.href` in mapRoute, the analog of vue-router's `name` —
+ * the warning points at the real route.
+ *
+ *   const routes  = useMikserRoutes({ mapRoute })
+ *   const element = useRoutes(routes)
+ *   const { pathname } = useLocation()
+ *   useUnmatchedRouteWarning({ routes, pathname, matched: element != null })
+ *   return element
+ *
+ * (With a `notFoundElement`, `useRoutes` is never null — derive `matched`
+ * from your own check, e.g. react-router's `matchRoutes`, excluding the `*`
+ * route.) Reports only; it renders nothing itself.
+ */
+export function useUnmatchedRouteWarning({ routes, pathname, matched, warn = console.warn } = {}) {
+    useEffect(() => {
+        if (matched) return
+        let hint = ''
+        const named = (routes ?? []).find((r) => r.id === pathname)
+        if (named?.path) {
+            hint =
+                `\n  '${pathname}' is a route id (a canonical href), not a path — ` +
+                `its route is '${named.path}'. Navigate to that path.`
+        }
+        warn(`[mikser] no route matched '${pathname}' — the matched element is null.${hint}`)
+    }, [pathname, matched]) // eslint-disable-line react-hooks/exhaustive-deps
+}

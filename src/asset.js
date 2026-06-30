@@ -1,14 +1,16 @@
 // Asset resolution — React-reactive shell around sdk-api's format-neutral
 // asset helpers.
 //
-//   useAsset().assetUrl(source, preset, { ext })  — preset → derivative
-//     URL by convention; pure, needs no provider (just the client's
-//     baseUrl). The common case.
-//   useAsset().asset(ref)                          — managed-entity
-//     metadata lookup; only resolves inside <AssetIndexProvider>.
+//   useAsset().url(ref)        — join a deployed served path (meta.url or
+//     meta.presets.<name>) to the client base; pure, needs no provider.
+//     The common case (ADR-0011).
+//   useAsset().asset(ref)      — managed-entity metadata lookup; only
+//     resolves inside <AssetIndexProvider>.
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { assetUrl as buildAssetUrl, createAssetIndex } from 'mikser-io-sdk-api'
+import { deployedUrl, createAssetIndex } from 'mikser-io-sdk-api'
 import { MikserClientContext, useMikserClient } from './client.js'
+
+export { watchAssetFallbacks } from 'mikser-io-sdk-api'
 
 export const AssetIndexContext = createContext(null)
 
@@ -21,7 +23,7 @@ function filterKey(filter) {
 /**
  * AssetIndexProvider — subscribes to managed asset entities and exposes
  * the index via context. Only needed for useAsset().asset(ref); the
- * assetUrl() convention helper needs no provider.
+ * url() helper needs no provider.
  *
  *   <AssetIndexProvider>
  *     <App />
@@ -61,27 +63,27 @@ export function AssetIndexProvider({
 }
 
 /**
- * Asset access. Returns `{ assetUrl, asset, index }`.
+ * Asset access. Returns `{ url, asset, index }`.
  *
- *   const { assetUrl } = useAsset()
- *   <video src={assetUrl(clip, 'presentation')}
- *          poster={assetUrl(clip, 'poster', { ext: 'jpg' })} />
+ *   const { url } = useAsset()
+ *   <video src={url(clip.meta.url)}
+ *          poster={url(clip.meta.presets.poster)} />
  *
- * `assetUrl(source, preset, { ext })` builds the derivative URL by
- * convention, baseUrl from the installed client; needs no provider.
- * `asset(ref)` → `{ url, meta } | null` for a managed asset entity, and
- * only resolves inside <AssetIndexProvider> (otherwise null).
+ * `url(ref)` joins a deployed served path (from `meta.url` /
+ * `meta.presets.<name>`, expanded via the catalog) to the client base;
+ * needs no provider. `asset(ref)` → `{ url, meta } | null` for a managed
+ * asset entity, and only resolves inside <AssetIndexProvider> (else null).
  */
 export function useAsset() {
     const client = useContext(MikserClientContext)
     const index = useContext(AssetIndexContext)
 
     const baseUrl = client?.baseUrl ?? ''
-    const assetUrl = useCallback(
-        (source, preset, options = {}) => buildAssetUrl(source, preset, { baseUrl, ...options }),
+    const url = useCallback(
+        (ref) => deployedUrl(ref, { baseUrl }),
         [baseUrl],
     )
     const asset = useCallback((ref) => (index ? index.asset(ref) : null), [index])
 
-    return { assetUrl, asset, index }
+    return { url, asset, index }
 }
